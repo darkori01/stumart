@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Stumart",
+    "slug": "stumart",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/stumart-logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/stumart-logo.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/stumart-logo.png"
+    }
+  }
+}
