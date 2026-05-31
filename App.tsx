@@ -19,7 +19,8 @@ type Role = 'customer' | 'vendor';
 type AuthMode = 'signin' | 'signup';
 type VerificationStatus = 'verified' | 'pending';
 type PriceType = 'Fixed' | 'Negotiable';
-type Tab = 'Home' | 'Reels' | 'Chats' | 'Saved' | 'Studio';
+type ListingKind = 'Product' | 'Skill';
+type Tab = 'Home' | 'Dashboard' | 'Products' | 'Reels' | 'Chats' | 'Saved' | 'Studio';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 type Account = {
@@ -36,6 +37,7 @@ type Listing = {
   title: string;
   vendor: string;
   category: string;
+  kind: ListingKind;
   price: string;
   priceType: PriceType;
   rating: string;
@@ -82,6 +84,7 @@ const listings: Listing[] = [
     title: 'Soft glam and wig styling',
     vendor: 'Ama Beauty Lab',
     category: 'Beauty',
+    kind: 'Skill',
     price: 'GHS 120',
     priceType: 'Negotiable',
     rating: '4.9',
@@ -97,6 +100,7 @@ const listings: Listing[] = [
     title: 'Mini cake boxes',
     vendor: 'Kobby Bakes',
     category: 'Food',
+    kind: 'Product',
     price: 'GHS 180',
     priceType: 'Fixed',
     rating: '4.8',
@@ -112,6 +116,7 @@ const listings: Listing[] = [
     title: 'Logo and brand kit',
     vendor: 'Nia Design Co.',
     category: 'Design',
+    kind: 'Skill',
     price: 'GHS 250',
     priceType: 'Negotiable',
     rating: '4.7',
@@ -124,14 +129,15 @@ const listings: Listing[] = [
   },
   {
     id: 'l4',
-    title: 'Sneaker refresh',
+    title: 'Sneaker care kit',
     vendor: 'FreshStep Campus',
     category: 'Fashion',
+    kind: 'Product',
     price: 'GHS 45',
     priceType: 'Fixed',
     rating: '4.6',
     campus: 'TF Hostel',
-    description: 'Deep cleans, lace whitening, deodorizing, and same-day pickup for everyday campus sneakers.',
+    description: 'A ready-to-use kit with cleaner, brush, lace whitener, and deodorizer for everyday campus sneakers.',
     image:
       'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?auto=format&fit=crop&w=900&q=80',
     tint: '#7c3aed',
@@ -192,9 +198,24 @@ const chats = [
 
 const categories = ['All', 'Beauty', 'Food', 'Design', 'Fashion'];
 const quickNeeds = ['Glow up', 'Birthday prep', 'Brand launch', 'Clean kicks'];
+const initialVendorListings = listings.filter((listing) => listing.vendor === 'Ama Beauty Lab');
+
+const activeOrders = [
+  { id: 'o1', customer: 'Nana Y.', item: 'Soft glam and wig styling', amount: 'GHS 120', status: 'Due today' },
+  { id: 'o2', customer: 'Akua M.', item: 'Weekend frontal touch-up', amount: 'GHS 90', status: 'Awaiting time' },
+  { id: 'o3', customer: 'Esi B.', item: 'Hall dinner glam', amount: 'GHS 150', status: 'Confirmed' },
+];
+
+const vendorMessages = [
+  { id: 'vm1', customer: 'Nana Y.', last: 'Can you still do 5pm today?', tag: 'Order' },
+  { id: 'vm2', customer: 'Esi B.', last: 'I sent my inspiration photo.', tag: 'New brief' },
+  { id: 'vm3', customer: 'Akua M.', last: 'Can we agree on GHS 90?', tag: 'Offer' },
+];
 
 const tabConfig: Record<Tab, { icon: IconName; activeIcon: IconName }> = {
   Home: { icon: 'home-outline', activeIcon: 'home' },
+  Dashboard: { icon: 'grid-outline', activeIcon: 'grid' },
+  Products: { icon: 'pricetags-outline', activeIcon: 'pricetags' },
   Reels: { icon: 'play-circle-outline', activeIcon: 'play-circle' },
   Chats: { icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
   Saved: { icon: 'heart-outline', activeIcon: 'heart' },
@@ -218,6 +239,10 @@ export default function App() {
   const [likedReels, setLikedReels] = useState<string[]>(['r1']);
   const [savedIds, setSavedIds] = useState<string[]>(['l2']);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(listings[0]);
+  const [vendorListings, setVendorListings] = useState<Listing[]>(initialVendorListings);
+  const [newListingKind, setNewListingKind] = useState<ListingKind>('Skill');
+  const [newListingTitle, setNewListingTitle] = useState('');
+  const [newListingPrice, setNewListingPrice] = useState('');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -282,7 +307,7 @@ export default function App() {
 
     setAuthMessage('');
     setIsAuthenticated(true);
-    setActiveTab(account.role === 'vendor' ? 'Studio' : 'Home');
+    setActiveTab(account.role === 'vendor' ? 'Dashboard' : 'Home');
   };
 
   const handleSignup = () => {
@@ -328,6 +353,44 @@ export default function App() {
     setAuthMessage('');
     setIsAuthenticated(true);
     setActiveTab('Home');
+  };
+
+  const addVendorListing = () => {
+    const trimmedTitle = newListingTitle.trim();
+    const trimmedPrice = newListingPrice.trim();
+
+    if (!trimmedTitle || !trimmedPrice) {
+      Alert.alert('Add listing details', 'Enter a title and price before adding it to your catalog.');
+      return;
+    }
+
+    const priceType: PriceType = newListingKind === 'Skill' ? 'Negotiable' : 'Fixed';
+    const listing: Listing = {
+      id: `vendor-${Date.now()}`,
+      title: trimmedTitle,
+      vendor: 'Ama Beauty Lab',
+      category: newListingKind === 'Skill' ? 'Beauty' : 'Product',
+      kind: newListingKind,
+      price: trimmedPrice.toUpperCase().startsWith('GHS') ? trimmedPrice : `GHS ${trimmedPrice}`,
+      priceType,
+      rating: 'New',
+      campus: 'Vendor Studio',
+      description:
+        newListingKind === 'Skill'
+          ? 'A skill-based service from this student vendor. Customers can negotiate before booking.'
+          : 'A product-based listing from this student vendor. Price is fixed for checkout.',
+      image:
+        newListingKind === 'Skill'
+          ? 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=80'
+          : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
+      tint: newListingKind === 'Skill' ? '#a78bfa' : '#8b5cf6',
+      tags: [newListingKind, priceType, 'Vendor added'],
+    };
+
+    setVendorListings((current) => [listing, ...current]);
+    setNewListingTitle('');
+    setNewListingPrice('');
+    setActiveTab('Products');
   };
 
   if (isLoading) {
@@ -521,26 +584,152 @@ export default function App() {
               <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
               <View>
                 <Text style={styles.smallLabel}>Welcome back</Text>
-                <Text style={styles.appTitle}>Stumart</Text>
+                <Text style={styles.appTitle}>{role === 'vendor' ? 'Ama Beauty Lab' : 'Stumart'}</Text>
               </View>
             </View>
             <Pressable style={styles.profilePill} onPress={() => setIsAuthenticated(false)}>
               <Text style={styles.profileInitial}>{role === 'customer' ? 'C' : 'V'}</Text>
             </Pressable>
           </View>
-          <Text style={styles.heroLine}>What do you need before your next class break?</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.needRow}>
-            {quickNeeds.map((need) => (
-              <Pressable
-                key={need}
-                onPress={() => setActiveNeed(need)}
-                style={[styles.needChip, activeNeed === need && styles.needChipActive]}
-              >
-                <Text style={[styles.needChipText, activeNeed === need && styles.needChipTextActive]}>{need}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <Text style={styles.heroLine}>
+            {role === 'vendor'
+              ? 'Track orders, cash, messages, reels, and your campus catalog.'
+              : 'What do you need before your next class break?'}
+          </Text>
+          {role === 'customer' ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.needRow}>
+              {quickNeeds.map((need) => (
+                <Pressable
+                  key={need}
+                  onPress={() => setActiveNeed(need)}
+                  style={[styles.needChip, activeNeed === need && styles.needChipActive]}
+                >
+                  <Text style={[styles.needChipText, activeNeed === need && styles.needChipTextActive]}>{need}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.vendorHeroStats}>
+              <View style={styles.vendorHeroStat}>
+                <Text style={styles.vendorHeroValue}>GHS 1,240</Text>
+                <Text style={styles.vendorHeroLabel}>Cash made</Text>
+              </View>
+              <View style={styles.vendorHeroStat}>
+                <Text style={styles.vendorHeroValue}>{activeOrders.length}</Text>
+                <Text style={styles.vendorHeroLabel}>Active orders</Text>
+              </View>
+            </View>
+          )}
         </LinearGradient>
+
+        {role === 'vendor' && activeTab === 'Dashboard' && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Business dashboard</Text>
+              <Text style={styles.sectionMeta}>Today</Text>
+            </View>
+
+            <View style={styles.statGrid}>
+              <View style={styles.statCard}>
+                <Ionicons name="wallet-outline" size={22} color="#7c3aed" />
+                <Text style={styles.statValue}>GHS 1,240</Text>
+                <Text style={styles.statLabel}>Cash made</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="receipt-outline" size={22} color="#7c3aed" />
+                <Text style={styles.statValue}>{activeOrders.length}</Text>
+                <Text style={styles.statLabel}>Active orders</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="chatbubbles-outline" size={22} color="#7c3aed" />
+                <Text style={styles.statValue}>{vendorMessages.length}</Text>
+                <Text style={styles.statLabel}>Client messages</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="storefront-outline" size={22} color="#7c3aed" />
+                <Text style={styles.statValue}>{vendorListings.length}</Text>
+                <Text style={styles.statLabel}>Listings live</Text>
+              </View>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Active orders</Text>
+              <Text style={styles.sectionMeta}>Manage</Text>
+            </View>
+            {activeOrders.map((order) => (
+              <View key={order.id} style={styles.orderRow}>
+                <View style={styles.orderIcon}>
+                  <Ionicons name="bag-check-outline" size={20} color="#7c3aed" />
+                </View>
+                <View style={styles.chatBody}>
+                  <Text style={styles.chatName}>{order.customer}</Text>
+                  <Text style={styles.chatLast}>{order.item}</Text>
+                </View>
+                <View style={styles.orderRight}>
+                  <Text style={styles.orderAmount}>{order.amount}</Text>
+                  <Text style={styles.orderStatus}>{order.status}</Text>
+                </View>
+              </View>
+            ))}
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Client messages</Text>
+              <Text style={styles.sectionMeta}>Latest</Text>
+            </View>
+            {vendorMessages.map((message) => (
+              <View key={message.id} style={styles.chatRow}>
+                <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                  <Text style={styles.chatAvatarText}>{message.customer.slice(0, 1)}</Text>
+                </LinearGradient>
+                <View style={styles.chatBody}>
+                  <Text style={styles.chatName}>{message.customer}</Text>
+                  <Text style={styles.chatLast}>{message.last}</Text>
+                </View>
+                <View style={styles.messageTag}>
+                  <Text style={styles.messageTagText}>{message.tag}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {role === 'vendor' && activeTab === 'Products' && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Your catalog</Text>
+              <Text style={styles.sectionMeta}>{vendorListings.length} live</Text>
+            </View>
+            <View style={styles.ruleBox}>
+              <Ionicons name="information-circle-outline" size={20} color="#7c3aed" />
+              <Text style={styles.ruleText}>
+                Skills use negotiable pricing. Products use fixed pricing. Choose the listing type in Studio.
+              </Text>
+            </View>
+            {vendorListings.map((listing) => (
+              <View key={listing.id} style={styles.vendorProductCard}>
+                <View style={styles.vendorProductTop}>
+                  <View style={styles.vendorProductIcon}>
+                    <Ionicons
+                      name={listing.kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
+                      size={22}
+                      color="#7c3aed"
+                    />
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={styles.listingTitle}>{listing.title}</Text>
+                    <Text style={styles.vendorName}>{listing.kind} based listing</Text>
+                  </View>
+                  <Text style={styles.vendorProductPrice}>{listing.price}</Text>
+                </View>
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaText}>{listing.kind}</Text>
+                  <Text style={styles.metaText}>{listing.priceType}</Text>
+                  <Text style={styles.metaText}>Live</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
 
         {activeTab === 'Home' && (
           <>
@@ -639,47 +828,74 @@ export default function App() {
         {activeTab === 'Chats' && (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Campus chats</Text>
-              <Text style={styles.sectionMeta}>Talk, plan, bargain</Text>
+              <Text style={styles.sectionTitle}>{role === 'vendor' ? 'Client messages' : 'Campus chats'}</Text>
+              <Text style={styles.sectionMeta}>{role === 'vendor' ? 'Orders and offers' : 'Talk, plan, bargain'}</Text>
             </View>
-            {chats.map((chat) => (
-              <View key={chat.id} style={styles.chatRow}>
-                <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
-                  <Text style={styles.chatAvatarText}>{chat.vendor.slice(0, 1)}</Text>
-                </LinearGradient>
-                <View style={styles.chatBody}>
-                  <Text style={styles.chatName}>{chat.vendor}</Text>
-                  <Text style={styles.chatLast}>{chat.last}</Text>
-                </View>
-                {chat.unread > 0 && (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>{chat.unread}</Text>
+            {role === 'vendor'
+              ? vendorMessages.map((message) => (
+                  <View key={message.id} style={styles.chatRow}>
+                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                      <Text style={styles.chatAvatarText}>{message.customer.slice(0, 1)}</Text>
+                    </LinearGradient>
+                    <View style={styles.chatBody}>
+                      <Text style={styles.chatName}>{message.customer}</Text>
+                      <Text style={styles.chatLast}>{message.last}</Text>
+                    </View>
+                    <View style={styles.messageTag}>
+                      <Text style={styles.messageTagText}>{message.tag}</Text>
+                    </View>
                   </View>
-                )}
-              </View>
-            ))}
-
-            <View style={styles.negotiationBox}>
-              <View style={styles.miniTitleRow}>
-                <Ionicons name="sparkles" size={20} color="#7c3aed" />
-                <Text style={styles.detailTitle}>Bargain buddy</Text>
-              </View>
-              <Text style={styles.detailCopy}>
-                Send a friendly offer, let vendors counter, and keep the whole deal inside chat.
-              </Text>
-              <View style={styles.offerRow}>
-                {['GHS 80', 'GHS 100', 'GHS 150'].map((offer) => (
-                  <Pressable key={offer} style={styles.offerChip}>
-                    <Text style={styles.offerChipText}>{offer}</Text>
-                  </Pressable>
+                ))
+              : chats.map((chat) => (
+                  <View key={chat.id} style={styles.chatRow}>
+                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                      <Text style={styles.chatAvatarText}>{chat.vendor.slice(0, 1)}</Text>
+                    </LinearGradient>
+                    <View style={styles.chatBody}>
+                      <Text style={styles.chatName}>{chat.vendor}</Text>
+                      <Text style={styles.chatLast}>{chat.last}</Text>
+                    </View>
+                    {chat.unread > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{chat.unread}</Text>
+                      </View>
+                    )}
+                  </View>
                 ))}
+
+            {role === 'customer' ? (
+              <View style={styles.negotiationBox}>
+                <View style={styles.miniTitleRow}>
+                  <Ionicons name="sparkles" size={20} color="#7c3aed" />
+                  <Text style={styles.detailTitle}>Bargain buddy</Text>
+                </View>
+                <Text style={styles.detailCopy}>
+                  Send a friendly offer, let vendors counter, and keep the whole deal inside chat.
+                </Text>
+                <View style={styles.offerRow}>
+                  {['GHS 80', 'GHS 100', 'GHS 150'].map((offer) => (
+                    <Pressable key={offer} style={styles.offerChip}>
+                      <Text style={styles.offerChipText}>{offer}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput placeholder="Type your own offer" placeholderTextColor="#9f8fb8" style={styles.input} />
+                <Pressable style={styles.primaryButton}>
+                  <Text style={styles.primaryButtonText}>Send offer</Text>
+                  <Ionicons name="send" size={17} color="#ffffff" />
+                </Pressable>
               </View>
-              <TextInput placeholder="Type your own offer" placeholderTextColor="#9f8fb8" style={styles.input} />
-              <Pressable style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>Send offer</Text>
-                <Ionicons name="send" size={17} color="#ffffff" />
-              </Pressable>
-            </View>
+            ) : (
+              <View style={styles.negotiationBox}>
+                <View style={styles.miniTitleRow}>
+                  <Ionicons name="checkmark-done-circle-outline" size={20} color="#7c3aed" />
+                  <Text style={styles.detailTitle}>Reply center</Text>
+                </View>
+                <Text style={styles.detailCopy}>
+                  Vendor messages collect questions, booking details, and negotiation offers from customers.
+                </Text>
+              </View>
+            )}
           </>
         )}
 
@@ -712,23 +928,74 @@ export default function App() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Vendor studio</Text>
-              <Text style={styles.sectionMeta}>Build your page</Text>
+              <Text style={styles.sectionMeta}>Add and manage</Text>
             </View>
             <LinearGradient colors={['#8b5cf6', '#c084fc']} style={styles.studioHero}>
               <Image source={logo} style={styles.studioLogo} resizeMode="contain" />
-              <Text style={styles.studioTitle}>Turn your skill into a campus storefront.</Text>
+              <Text style={styles.studioTitle}>Build the front of your campus business.</Text>
               <Text style={styles.studioCopy}>
-                Add a service, set fixed or negotiable pricing, post reels, and reply to customers from one soft
-                little workspace.
+                Add products or skills, post reels, reply to customers, and keep your listings ready for orders.
               </Text>
             </LinearGradient>
+
+            <View style={styles.addListingPanel}>
+              <Text style={styles.detailTitle}>Add a product or skill</Text>
+              <Text style={styles.detailCopy}>
+                Choose Product for fixed pricing or Skill for negotiable pricing.
+              </Text>
+              <View style={styles.kindSwitch}>
+                {(['Skill', 'Product'] as ListingKind[]).map((kind) => (
+                  <Pressable
+                    key={kind}
+                    onPress={() => setNewListingKind(kind)}
+                    style={[styles.kindButton, newListingKind === kind && styles.kindButtonActive]}
+                  >
+                    <Ionicons
+                      name={kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
+                      size={18}
+                      color={newListingKind === kind ? '#ffffff' : '#7c3aed'}
+                    />
+                    <Text style={[styles.kindButtonText, newListingKind === kind && styles.kindButtonTextActive]}>
+                      {kind}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.ruleBox}>
+                <Ionicons name="pricetag-outline" size={18} color="#7c3aed" />
+                <Text style={styles.ruleText}>
+                  {newListingKind === 'Skill'
+                    ? 'This will be saved as Negotiable because it is a skill-based service.'
+                    : 'This will be saved as Fixed because it is a product-based listing.'}
+                </Text>
+              </View>
+              <TextInput
+                value={newListingTitle}
+                onChangeText={setNewListingTitle}
+                placeholder={newListingKind === 'Skill' ? 'e.g. Wig installation' : 'e.g. Hair care kit'}
+                placeholderTextColor="#9f8fb8"
+                style={styles.input}
+              />
+              <TextInput
+                value={newListingPrice}
+                onChangeText={setNewListingPrice}
+                placeholder="Price, e.g. GHS 120"
+                placeholderTextColor="#9f8fb8"
+                keyboardType="default"
+                style={styles.input}
+              />
+              <Pressable style={styles.primaryButton} onPress={addVendorListing}>
+                <Text style={styles.primaryButtonText}>Add to catalog</Text>
+                <Ionicons name="add-circle" size={18} color="#ffffff" />
+              </Pressable>
+            </View>
+
             {[
-              { title: 'Create product or service', icon: 'add-circle-outline' as IconName },
-              { title: 'Upload reel', icon: 'cloud-upload-outline' as IconName },
-              { title: 'Set price rules', icon: 'pricetags-outline' as IconName },
-              { title: 'Review offers', icon: 'receipt-outline' as IconName },
+              { title: 'Upload reel', icon: 'cloud-upload-outline' as IconName, action: () => setActiveTab('Reels') },
+              { title: 'View products and skills', icon: 'pricetags-outline' as IconName, action: () => setActiveTab('Products') },
+              { title: 'Review orders and offers', icon: 'receipt-outline' as IconName, action: () => setActiveTab('Dashboard') },
             ].map((item) => (
-              <Pressable key={item.title} style={styles.studioAction}>
+              <Pressable key={item.title} style={styles.studioAction} onPress={item.action}>
                 <View style={styles.studioActionLeft}>
                   <Ionicons name={item.icon} size={22} color="#7c3aed" />
                   <Text style={styles.studioActionText}>{item.title}</Text>
@@ -742,7 +1009,7 @@ export default function App() {
 
       <View style={styles.tabBar}>
         {(role === 'vendor'
-          ? (['Home', 'Reels', 'Chats', 'Saved', 'Studio'] as Tab[])
+          ? (['Dashboard', 'Products', 'Reels', 'Chats', 'Studio'] as Tab[])
           : (['Home', 'Reels', 'Chats', 'Saved'] as Tab[])
         ).map((tab) => {
           const isActive = activeTab === tab;
@@ -800,6 +1067,7 @@ function ListingCard({
           </Pressable>
         </View>
         <View style={styles.metaRow}>
+          <Text style={styles.metaText}>{listing.kind}</Text>
           <Text style={styles.metaText}>{listing.category}</Text>
           <Text style={styles.metaText}>{listing.priceType}</Text>
           <Text style={styles.metaText}>{listing.rating}</Text>
@@ -1181,6 +1449,140 @@ const styles = StyleSheet.create({
   },
   needChipTextActive: {
     color: '#ffffff',
+  },
+  vendorHeroStats: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  vendorHeroStat: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  vendorHeroValue: {
+    color: '#251044',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  vendorHeroLabel: {
+    color: '#7f6a9f',
+    fontWeight: '800',
+    fontSize: 12,
+    marginTop: 3,
+  },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  statCard: {
+    width: '48%',
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  statValue: {
+    color: '#251044',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 10,
+  },
+  statLabel: {
+    color: '#7f6a9f',
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  orderRow: {
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  orderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderRight: {
+    alignItems: 'flex-end',
+  },
+  orderAmount: {
+    color: '#251044',
+    fontWeight: '900',
+  },
+  orderStatus: {
+    color: '#7c3aed',
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  messageTag: {
+    backgroundColor: '#f3e8ff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  messageTagText: {
+    color: '#7c3aed',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  ruleBox: {
+    backgroundColor: '#f5edff',
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    marginBottom: 12,
+  },
+  ruleText: {
+    flex: 1,
+    color: '#6f5d8d',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  vendorProductCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 15,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  vendorProductTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  vendorProductIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vendorProductPrice: {
+    color: '#7c3aed',
+    fontWeight: '900',
   },
   searchCard: {
     backgroundColor: '#ffffff',
@@ -1570,6 +1972,40 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 14,
   },
+  addListingPanel: {
+    backgroundColor: '#ffffff',
+    borderRadius: 26,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    gap: 12,
+    marginBottom: 14,
+  },
+  kindSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#f5edff',
+    borderRadius: 20,
+    padding: 5,
+  },
+  kindButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+  kindButtonActive: {
+    backgroundColor: '#9b5cff',
+  },
+  kindButtonText: {
+    color: '#7c3aed',
+    fontWeight: '900',
+  },
+  kindButtonTextActive: {
+    color: '#ffffff',
+  },
   studioLogo: {
     width: 56,
     height: 56,
@@ -1636,7 +2072,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: '#8b7aa8',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
   },
   tabTextActive: {
