@@ -57,6 +57,13 @@ type Reel = {
   image: string;
 };
 
+type ChatMessage = {
+  id: string;
+  from: 'me' | 'them';
+  text: string;
+  time: string;
+};
+
 const logo = require('./assets/stumart-logo.png');
 
 const demoAccounts: Account[] = [
@@ -212,6 +219,96 @@ const vendorMessages = [
   { id: 'vm3', customer: 'Akua M.', last: 'Can we agree on GHS 90?', tag: 'Offer' },
 ];
 
+const customerChatThreads = [
+  {
+    id: 'c1',
+    name: 'Ama Beauty Lab',
+    subtitle: 'Soft glam and wig styling',
+    status: 'Online',
+    avatar: 'A',
+    messages: [
+      { id: 'c1m1', from: 'them' as const, text: 'Hi Toni, I have a 5pm slot open today.', time: '2:12 PM' },
+      { id: 'c1m2', from: 'me' as const, text: 'Perfect. Can you do GHS 100 if I come with my wig washed?', time: '2:14 PM' },
+      { id: 'c1m3', from: 'them' as const, text: 'Yes, I can do GHS 100 if you book before Friday.', time: '2:16 PM' },
+      { id: 'c1m4', from: 'me' as const, text: 'Deal. I will pass by Pentagon after class.', time: '2:18 PM' },
+    ],
+  },
+  {
+    id: 'c2',
+    name: 'FreshStep Campus',
+    subtitle: 'Sneaker care kit',
+    status: 'Replies fast',
+    avatar: 'F',
+    messages: [
+      { id: 'c2m1', from: 'them' as const, text: 'Send a photo of the sneakers and I will confirm timing.', time: '11:03 AM' },
+      { id: 'c2m2', from: 'me' as const, text: 'Sending now. Can I pick up at TF Hostel?', time: '11:05 AM' },
+    ],
+  },
+  {
+    id: 'c3',
+    name: 'Nia Design Co.',
+    subtitle: 'Logo and brand kit',
+    status: 'Active today',
+    avatar: 'N',
+    messages: [
+      { id: 'c3m1', from: 'them' as const, text: 'The starter logo package includes two revisions.', time: '9:41 AM' },
+      { id: 'c3m2', from: 'me' as const, text: 'Nice. I need a thrift brand logo before Sunday.', time: '9:44 AM' },
+      { id: 'c3m3', from: 'them' as const, text: 'That timeline works. Send your color ideas and brand name.', time: '9:48 AM' },
+    ],
+  },
+  {
+    id: 'c4',
+    name: 'Kobby Bakes',
+    subtitle: 'Mini cake boxes',
+    status: 'Taking preorders',
+    avatar: 'K',
+    messages: [
+      { id: 'c4m1', from: 'them' as const, text: 'Cake boxes are available for Friday pickup.', time: '8:30 AM' },
+      { id: 'c4m2', from: 'me' as const, text: 'Great. I may need one for a hostel birthday.', time: '8:42 AM' },
+    ],
+  },
+];
+
+const vendorChatThreads = [
+  {
+    id: 'vm1',
+    name: 'Nana Y.',
+    subtitle: 'Soft glam and wig styling',
+    status: 'Order chat',
+    avatar: 'N',
+    tag: 'Order',
+    messages: [
+      { id: 'vm1m1', from: 'them' as const, text: 'Can you still do 5pm today?', time: '1:25 PM' },
+      { id: 'vm1m2', from: 'me' as const, text: 'Yes, 5pm is open. Please come with your wig brushed out.', time: '1:27 PM' },
+      { id: 'vm1m3', from: 'them' as const, text: 'Great, I will be at Pentagon by 4:55.', time: '1:29 PM' },
+    ],
+  },
+  {
+    id: 'vm2',
+    name: 'Esi B.',
+    subtitle: 'Hall dinner glam',
+    status: 'New brief',
+    avatar: 'E',
+    tag: 'New brief',
+    messages: [
+      { id: 'vm2m1', from: 'them' as const, text: 'I sent my inspiration photo.', time: '12:10 PM' },
+      { id: 'vm2m2', from: 'me' as const, text: 'Seen. I can recreate that with softer lashes for campus lighting.', time: '12:18 PM' },
+    ],
+  },
+  {
+    id: 'vm3',
+    name: 'Akua M.',
+    subtitle: 'Weekend frontal touch-up',
+    status: 'Offer',
+    avatar: 'A',
+    tag: 'Offer',
+    messages: [
+      { id: 'vm3m1', from: 'them' as const, text: 'Can we agree on GHS 90?', time: '10:32 AM' },
+      { id: 'vm3m2', from: 'me' as const, text: 'GHS 90 works if you can come Saturday morning.', time: '10:35 AM' },
+    ],
+  },
+];
+
 const tabConfig: Record<Tab, { icon: IconName; activeIcon: IconName }> = {
   Home: { icon: 'home-outline', activeIcon: 'home' },
   Dashboard: { icon: 'grid-outline', activeIcon: 'grid' },
@@ -239,10 +336,14 @@ export default function App() {
   const [likedReels, setLikedReels] = useState<string[]>(['r1']);
   const [savedIds, setSavedIds] = useState<string[]>(['l2']);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(listings[0]);
+  const [vendorPageListing, setVendorPageListing] = useState<Listing | null>(null);
   const [vendorListings, setVendorListings] = useState<Listing[]>(initialVendorListings);
   const [newListingKind, setNewListingKind] = useState<ListingKind>('Skill');
   const [newListingTitle, setNewListingTitle] = useState('');
   const [newListingPrice, setNewListingPrice] = useState('');
+  const [selectedChatId, setSelectedChatId] = useState('c1');
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sentMessagesByThread, setSentMessagesByThread] = useState<Record<string, ChatMessage[]>>({});
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -263,6 +364,12 @@ export default function App() {
   }, [activeCategory, search]);
 
   const savedListings = listings.filter((listing) => savedIds.includes(listing.id));
+  const chatThreads = role === 'vendor' ? vendorChatThreads : customerChatThreads;
+  const selectedChat = chatThreads.find((thread) => thread.id === selectedChatId) ?? chatThreads[0];
+  const selectedMessages = [...selectedChat.messages, ...(sentMessagesByThread[selectedChat.id] ?? [])];
+  const vendorPageListings = vendorPageListing
+    ? listings.filter((listing) => listing.vendor === vendorPageListing.vendor)
+    : [];
 
   const toggleSaved = (id: string) => {
     setSavedIds((current) =>
@@ -391,6 +498,50 @@ export default function App() {
     setNewListingTitle('');
     setNewListingPrice('');
     setActiveTab('Products');
+  };
+
+  const openVendorListingPage = (listing: Listing) => {
+    setVendorPageListing(listing);
+    setActiveTab('Home');
+  };
+
+  const openListingChat = (listing: Listing, intent: 'purchase' | 'bargain') => {
+    if (intent === 'bargain' && listing.priceType !== 'Negotiable') {
+      Alert.alert('Fixed price', 'This listing is fixed price, so bargaining is not available.');
+      return;
+    }
+
+    const thread = customerChatThreads.find((chat) => chat.name === listing.vendor);
+    setSelectedChatId(thread?.id ?? 'c1');
+    setMessageDraft(
+      intent === 'purchase'
+        ? `Hi ${listing.vendor}, I am interested in purchasing ${listing.title} for ${listing.price}. Is it still available?`
+        : `Hi ${listing.vendor}, I am interested in ${listing.title}. It is listed at ${listing.price}. Can we bargain?`,
+    );
+    setActiveTab('Chats');
+  };
+
+  const sendMessage = () => {
+    const trimmedMessage = messageDraft.trim();
+
+    if (!trimmedMessage) {
+      return;
+    }
+
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const nextMessage: ChatMessage = {
+      id: `${selectedChat.id}-${now.getTime()}`,
+      from: 'me',
+      text: trimmedMessage,
+      time,
+    };
+
+    setSentMessagesByThread((current) => ({
+      ...current,
+      [selectedChat.id]: [...(current[selectedChat.id] ?? []), nextMessage],
+    }));
+    setMessageDraft('');
   };
 
   if (isLoading) {
@@ -593,7 +744,7 @@ export default function App() {
           </View>
           <Text style={styles.heroLine}>
             {role === 'vendor'
-              ? 'Track orders, cash, messages, reels, and your campus catalog.'
+              ? 'Today at the studio'
               : 'What do you need before your next class break?'}
           </Text>
           {role === 'customer' ? (
@@ -629,27 +780,53 @@ export default function App() {
               <Text style={styles.sectionMeta}>Today</Text>
             </View>
 
-            <View style={styles.statGrid}>
-              <View style={styles.statCard}>
-                <Ionicons name="wallet-outline" size={22} color="#7c3aed" />
-                <Text style={styles.statValue}>GHS 1,240</Text>
-                <Text style={styles.statLabel}>Cash made</Text>
+            <LinearGradient colors={['#251044', '#7c3aed']} style={styles.vendorRevenueCard}>
+              <View>
+                <Text style={styles.revenueLabel}>Today's cash made</Text>
+                <Text style={styles.revenueValue}>GHS 1,240</Text>
+                <Text style={styles.revenueMeta}>+18% from yesterday</Text>
               </View>
-              <View style={styles.statCard}>
-                <Ionicons name="receipt-outline" size={22} color="#7c3aed" />
-                <Text style={styles.statValue}>{activeOrders.length}</Text>
-                <Text style={styles.statLabel}>Active orders</Text>
+              <View style={styles.revenueIcon}>
+                <Ionicons name="trending-up" size={28} color="#ffffff" />
               </View>
-              <View style={styles.statCard}>
-                <Ionicons name="chatbubbles-outline" size={22} color="#7c3aed" />
-                <Text style={styles.statValue}>{vendorMessages.length}</Text>
-                <Text style={styles.statLabel}>Client messages</Text>
+            </LinearGradient>
+
+            <View style={styles.vendorMetricRow}>
+              <View style={styles.vendorMetricCard}>
+                <View style={styles.metricIconWrap}>
+                  <Ionicons name="receipt-outline" size={20} color="#0f766e" />
+                </View>
+                <Text style={styles.metricValue}>{activeOrders.length}</Text>
+                <Text style={styles.metricLabel}>Active orders</Text>
               </View>
-              <View style={styles.statCard}>
-                <Ionicons name="storefront-outline" size={22} color="#7c3aed" />
-                <Text style={styles.statValue}>{vendorListings.length}</Text>
-                <Text style={styles.statLabel}>Listings live</Text>
+              <View style={styles.vendorMetricCard}>
+                <View style={[styles.metricIconWrap, styles.metricIconPurple]}>
+                  <Ionicons name="chatbubbles-outline" size={20} color="#7c3aed" />
+                </View>
+                <Text style={styles.metricValue}>{vendorMessages.length}</Text>
+                <Text style={styles.metricLabel}>Unread chats</Text>
               </View>
+              <View style={styles.vendorMetricCard}>
+                <View style={[styles.metricIconWrap, styles.metricIconAmber]}>
+                  <Ionicons name="storefront-outline" size={20} color="#b45309" />
+                </View>
+                <Text style={styles.metricValue}>{vendorListings.length}</Text>
+                <Text style={styles.metricLabel}>Live listings</Text>
+              </View>
+            </View>
+
+            <View style={styles.vendorActionGrid}>
+              {[
+                { label: 'Reply to clients', icon: 'chatbubble-ellipses-outline' as IconName, action: () => setActiveTab('Chats') },
+                { label: 'Add listing', icon: 'add-circle-outline' as IconName, action: () => setActiveTab('Studio') },
+                { label: 'View catalog', icon: 'pricetags-outline' as IconName, action: () => setActiveTab('Products') },
+                { label: 'Post reel', icon: 'play-circle-outline' as IconName, action: () => setActiveTab('Reels') },
+              ].map((item) => (
+                <Pressable key={item.label} style={styles.vendorActionCard} onPress={item.action}>
+                  <Ionicons name={item.icon} size={21} color="#7c3aed" />
+                  <Text style={styles.vendorActionText}>{item.label}</Text>
+                </Pressable>
+              ))}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -676,19 +853,26 @@ export default function App() {
               <Text style={styles.sectionTitle}>Client messages</Text>
               <Text style={styles.sectionMeta}>Latest</Text>
             </View>
-            {vendorMessages.map((message) => (
-              <View key={message.id} style={styles.chatRow}>
+            {vendorChatThreads.map((message) => (
+              <Pressable
+                key={message.id}
+                style={styles.chatRow}
+                onPress={() => {
+                  setSelectedChatId(message.id);
+                  setActiveTab('Chats');
+                }}
+              >
                 <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
-                  <Text style={styles.chatAvatarText}>{message.customer.slice(0, 1)}</Text>
+                  <Text style={styles.chatAvatarText}>{message.avatar}</Text>
                 </LinearGradient>
                 <View style={styles.chatBody}>
-                  <Text style={styles.chatName}>{message.customer}</Text>
-                  <Text style={styles.chatLast}>{message.last}</Text>
+                  <Text style={styles.chatName}>{message.name}</Text>
+                  <Text style={styles.chatLast}>{message.messages[message.messages.length - 1].text}</Text>
                 </View>
                 <View style={styles.messageTag}>
                   <Text style={styles.messageTagText}>{message.tag}</Text>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </>
         )}
@@ -732,6 +916,77 @@ export default function App() {
         )}
 
         {activeTab === 'Home' && (
+          vendorPageListing ? (
+            <>
+              <Pressable style={styles.backButton} onPress={() => setVendorPageListing(null)}>
+                <Ionicons name="chevron-back" size={19} color="#7c3aed" />
+                <Text style={styles.backButtonText}>Back to dashboard</Text>
+              </Pressable>
+
+              <ImageBackground
+                source={{ uri: vendorPageListing.image }}
+                imageStyle={styles.vendorPageImage}
+                style={styles.vendorPageHero}
+              >
+                <LinearGradient colors={['rgba(37, 16, 68, 0.1)', 'rgba(37, 16, 68, 0.88)']} style={styles.vendorPageShade}>
+                  <View style={styles.vendorPageBadge}>
+                    <Ionicons name="storefront" size={15} color="#7c3aed" />
+                    <Text style={styles.vendorPageBadgeText}>{vendorPageListings.length} listing</Text>
+                  </View>
+                  <Text style={styles.vendorPageTitle}>{vendorPageListing.vendor}</Text>
+                  <Text style={styles.vendorPageCopy}>{vendorPageListing.campus}</Text>
+                </LinearGradient>
+              </ImageBackground>
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Products and services</Text>
+                <Text style={styles.sectionMeta}>Tap an action</Text>
+              </View>
+
+              {vendorPageListings.map((listing) => {
+                const canBargain = listing.priceType === 'Negotiable';
+                return (
+                  <View key={listing.id} style={styles.vendorListingCard}>
+                    <View style={styles.vendorListingTop}>
+                      <View style={[styles.vendorProductIcon, { backgroundColor: `${listing.tint}22` }]}>
+                        <Ionicons
+                          name={listing.kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
+                          size={22}
+                          color="#7c3aed"
+                        />
+                      </View>
+                      <View style={styles.flex}>
+                        <Text style={styles.listingTitle}>{listing.title}</Text>
+                        <Text style={styles.vendorName}>{listing.kind}</Text>
+                      </View>
+                      <Text style={styles.vendorProductPrice}>{listing.price}</Text>
+                    </View>
+                    <Text style={styles.vendorListingDescription}>{listing.description}</Text>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaText}>{listing.priceType}</Text>
+                      <Text style={styles.metaText}>{listing.category}</Text>
+                      <Text style={styles.metaText}>{listing.rating}</Text>
+                    </View>
+                    <View style={styles.vendorListingActions}>
+                      <Pressable style={styles.purchaseButton} onPress={() => openListingChat(listing, 'purchase')}>
+                        <Ionicons name="bag-check" size={17} color="#ffffff" />
+                        <Text style={styles.purchaseButtonText}>Purchase</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.bargainButton, !canBargain && styles.bargainButtonDisabled]}
+                        onPress={() => openListingChat(listing, 'bargain')}
+                      >
+                        <Ionicons name="pricetag" size={17} color={canBargain ? '#7c3aed' : '#9f8fb8'} />
+                        <Text style={[styles.bargainButtonText, !canBargain && styles.bargainButtonTextDisabled]}>
+                          Bargain
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          ) : (
           <>
             <View style={styles.searchCard}>
               <Ionicons name="search" size={20} color="#7c3aed" />
@@ -771,7 +1026,7 @@ export default function App() {
                 listing={listing}
                 isSaved={savedIds.includes(listing.id)}
                 onSave={() => toggleSaved(listing.id)}
-                onOpen={() => setSelectedListing(listing)}
+                onOpen={() => openVendorListingPage(listing)}
               />
             ))}
 
@@ -781,12 +1036,32 @@ export default function App() {
                 <Text style={styles.detailVendor}>{selectedListing.vendor}</Text>
                 <Text style={styles.detailPanelCopy}>{selectedListing.description}</Text>
                 <View style={styles.actionRow}>
-                  <Pressable style={styles.darkButton} onPress={() => setActiveTab('Chats')}>
+                  <Pressable
+                    style={styles.darkButton}
+                    onPress={() => {
+                      const thread = customerChatThreads.find((chat) => chat.name === selectedListing.vendor);
+                      setSelectedChatId(thread?.id ?? 'c1');
+                      setMessageDraft(
+                        `Hi ${selectedListing.vendor}, I am interested in purchasing ${selectedListing.title} for ${selectedListing.price}. Is it still available?`,
+                      );
+                      setActiveTab('Chats');
+                    }}
+                  >
                     <Ionicons name="chatbubble-ellipses" size={17} color="#ffffff" />
                     <Text style={styles.darkButtonText}>Message</Text>
                   </Pressable>
                   {selectedListing.priceType === 'Negotiable' && (
-                    <Pressable style={styles.lightButton} onPress={() => setActiveTab('Chats')}>
+                    <Pressable
+                      style={styles.lightButton}
+                      onPress={() => {
+                        const thread = customerChatThreads.find((chat) => chat.name === selectedListing.vendor);
+                        setSelectedChatId(thread?.id ?? 'c1');
+                        setMessageDraft(
+                          `Hi ${selectedListing.vendor}, I am interested in ${selectedListing.title}. It is listed at ${selectedListing.price}. Can we bargain?`,
+                        );
+                        setActiveTab('Chats');
+                      }}
+                    >
                       <Ionicons name="pricetag" size={17} color="#7c3aed" />
                       <Text style={styles.lightButtonText}>Bargain</Text>
                     </Pressable>
@@ -795,6 +1070,7 @@ export default function App() {
               </LinearGradient>
             )}
           </>
+          )
         )}
 
         {activeTab === 'Reels' && (
@@ -829,73 +1105,83 @@ export default function App() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{role === 'vendor' ? 'Client messages' : 'Campus chats'}</Text>
-              <Text style={styles.sectionMeta}>{role === 'vendor' ? 'Orders and offers' : 'Talk, plan, bargain'}</Text>
+              <Text style={styles.sectionMeta}>{chatThreads.length} active</Text>
             </View>
-            {role === 'vendor'
-              ? vendorMessages.map((message) => (
-                  <View key={message.id} style={styles.chatRow}>
-                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
-                      <Text style={styles.chatAvatarText}>{message.customer.slice(0, 1)}</Text>
-                    </LinearGradient>
-                    <View style={styles.chatBody}>
-                      <Text style={styles.chatName}>{message.customer}</Text>
-                      <Text style={styles.chatLast}>{message.last}</Text>
-                    </View>
-                    <View style={styles.messageTag}>
-                      <Text style={styles.messageTagText}>{message.tag}</Text>
-                    </View>
-                  </View>
-                ))
-              : chats.map((chat) => (
-                  <View key={chat.id} style={styles.chatRow}>
-                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
-                      <Text style={styles.chatAvatarText}>{chat.vendor.slice(0, 1)}</Text>
-                    </LinearGradient>
-                    <View style={styles.chatBody}>
-                      <Text style={styles.chatName}>{chat.vendor}</Text>
-                      <Text style={styles.chatLast}>{chat.last}</Text>
-                    </View>
-                    {chat.unread > 0 && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadText}>{chat.unread}</Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
 
-            {role === 'customer' ? (
-              <View style={styles.negotiationBox}>
-                <View style={styles.miniTitleRow}>
-                  <Ionicons name="sparkles" size={20} color="#7c3aed" />
-                  <Text style={styles.detailTitle}>Bargain buddy</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.threadRail}>
+              {chatThreads.map((thread) => {
+                const isSelected = selectedChat.id === thread.id;
+                return (
+                  <Pressable
+                    key={thread.id}
+                    style={[styles.threadChip, isSelected && styles.threadChipActive]}
+                    onPress={() => setSelectedChatId(thread.id)}
+                  >
+                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.threadChipAvatar}>
+                      <Text style={styles.chatAvatarText}>{thread.avatar}</Text>
+                    </LinearGradient>
+                    <View style={styles.threadChipTextWrap}>
+                      <Text style={[styles.threadChipName, isSelected && styles.threadChipNameActive]}>
+                        {thread.name}
+                      </Text>
+                      <Text style={[styles.threadChipStatus, isSelected && styles.threadChipStatusActive]}>
+                        {thread.status}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.chatPanel}>
+              <View style={styles.chatPanelHeader}>
+                <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatPanelAvatar}>
+                  <Text style={styles.chatAvatarText}>{selectedChat.avatar}</Text>
+                </LinearGradient>
+                <View style={styles.chatPanelTitleWrap}>
+                  <Text style={styles.chatPanelName}>{selectedChat.name}</Text>
+                  <Text style={styles.chatPanelSubtitle}>{selectedChat.subtitle}</Text>
                 </View>
-                <Text style={styles.detailCopy}>
-                  Send a friendly offer, let vendors counter, and keep the whole deal inside chat.
-                </Text>
-                <View style={styles.offerRow}>
-                  {['GHS 80', 'GHS 100', 'GHS 150'].map((offer) => (
-                    <Pressable key={offer} style={styles.offerChip}>
-                      <Text style={styles.offerChipText}>{offer}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput placeholder="Type your own offer" placeholderTextColor="#9f8fb8" style={styles.input} />
-                <Pressable style={styles.primaryButton}>
-                  <Text style={styles.primaryButtonText}>Send offer</Text>
-                  <Ionicons name="send" size={17} color="#ffffff" />
+                <Pressable style={styles.chatHeaderIcon}>
+                  <Ionicons name="call-outline" size={20} color="#7c3aed" />
                 </Pressable>
               </View>
-            ) : (
-              <View style={styles.negotiationBox}>
-                <View style={styles.miniTitleRow}>
-                  <Ionicons name="checkmark-done-circle-outline" size={20} color="#7c3aed" />
-                  <Text style={styles.detailTitle}>Reply center</Text>
-                </View>
-                <Text style={styles.detailCopy}>
-                  Vendor messages collect questions, booking details, and negotiation offers from customers.
-                </Text>
+
+              <View style={styles.messageList}>
+                <Text style={styles.dayPill}>Today</Text>
+                {selectedMessages.map((message) => {
+                  const mine = message.from === 'me';
+                  return (
+                    <View key={message.id} style={[styles.messageRow, mine && styles.messageRowMine]}>
+                      <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleTheirs]}>
+                        <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.text}</Text>
+                        <Text style={[styles.messageTime, mine && styles.messageTimeMine]}>{message.time}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            )}
+
+              <View style={styles.composerRow}>
+                <Pressable style={styles.composerIcon}>
+                  <Ionicons name="add" size={21} color="#7c3aed" />
+                </Pressable>
+                <TextInput
+                  value={messageDraft}
+                  onChangeText={setMessageDraft}
+                  placeholder={role === 'vendor' ? 'Reply to customer' : 'Message vendor'}
+                  placeholderTextColor="#9f8fb8"
+                  multiline
+                  style={styles.composerInput}
+                />
+                <Pressable
+                  style={[styles.sendButton, !messageDraft.trim() && styles.sendButtonMuted]}
+                  onPress={sendMessage}
+                >
+                  <Ionicons name="send" size={18} color="#ffffff" />
+                </Pressable>
+              </View>
+            </View>
           </>
         )}
 
@@ -911,7 +1197,7 @@ export default function App() {
                 listing={listing}
                 isSaved
                 onSave={() => toggleSaved(listing.id)}
-                onOpen={() => setSelectedListing(listing)}
+                onOpen={() => openVendorListingPage(listing)}
               />
             ))}
             {savedListings.length === 0 && (
@@ -1474,6 +1760,104 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+  vendorRevenueCard: {
+    borderRadius: 26,
+    padding: 18,
+    marginBottom: 12,
+    minHeight: 134,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  revenueLabel: {
+    color: '#ddd6fe',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  revenueValue: {
+    color: '#ffffff',
+    fontSize: 31,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  revenueMeta: {
+    color: '#f5edff',
+    fontWeight: '800',
+    marginTop: 7,
+  },
+  revenueIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vendorMetricRow: {
+    flexDirection: 'row',
+    gap: 9,
+    marginBottom: 12,
+  },
+  vendorMetricCard: {
+    flex: 1,
+    minHeight: 112,
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  metricIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ccfbf1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricIconPurple: {
+    backgroundColor: '#f3e8ff',
+  },
+  metricIconAmber: {
+    backgroundColor: '#fef3c7',
+  },
+  metricValue: {
+    color: '#251044',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 10,
+  },
+  metricLabel: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  vendorActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  vendorActionCard: {
+    width: '48%',
+    minHeight: 70,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  vendorActionText: {
+    flex: 1,
+    color: '#251044',
+    fontWeight: '900',
+    lineHeight: 18,
+  },
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1583,6 +1967,131 @@ const styles = StyleSheet.create({
   vendorProductPrice: {
     color: '#7c3aed',
     fontWeight: '900',
+    flexShrink: 0,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 12,
+  },
+  backButtonText: {
+    color: '#7c3aed',
+    fontWeight: '900',
+  },
+  vendorPageHero: {
+    minHeight: 220,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#4c1d95',
+    marginBottom: 16,
+  },
+  vendorPageImage: {
+    borderRadius: 28,
+  },
+  vendorPageShade: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 18,
+  },
+  vendorPageBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  vendorPageBadgeText: {
+    color: '#7c3aed',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  vendorPageTitle: {
+    color: '#ffffff',
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  vendorPageCopy: {
+    color: '#f5edff',
+    fontWeight: '900',
+    marginTop: 6,
+  },
+  vendorListingCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 15,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  vendorListingTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  vendorListingDescription: {
+    color: '#6f5d8d',
+    lineHeight: 20,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  vendorListingActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 14,
+  },
+  purchaseButton: {
+    flexGrow: 1,
+    minWidth: 132,
+    backgroundColor: '#4c1d95',
+    borderRadius: 18,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+  purchaseButtonText: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  bargainButton: {
+    flexGrow: 1,
+    minWidth: 132,
+    backgroundColor: '#f3e8ff',
+    borderRadius: 18,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: '#d8b4fe',
+  },
+  bargainButtonDisabled: {
+    backgroundColor: '#f8f4ff',
+    borderColor: '#eadcff',
+  },
+  bargainButtonText: {
+    color: '#7c3aed',
+    fontWeight: '900',
+  },
+  bargainButtonTextDisabled: {
+    color: '#9f8fb8',
   },
   searchCard: {
     backgroundColor: '#ffffff',
@@ -1908,6 +2417,194 @@ const styles = StyleSheet.create({
     color: '#7f6a9f',
     marginTop: 4,
     lineHeight: 19,
+  },
+  threadRail: {
+    marginBottom: 12,
+  },
+  threadChip: {
+    minWidth: 176,
+    maxWidth: 220,
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    marginRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  threadChipActive: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  threadChipAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  threadChipTextWrap: {
+    flex: 1,
+  },
+  threadChipName: {
+    color: '#251044',
+    fontWeight: '900',
+  },
+  threadChipNameActive: {
+    color: '#ffffff',
+  },
+  threadChipStatus: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  threadChipStatusActive: {
+    color: '#eee7ff',
+  },
+  chatPanel: {
+    backgroundColor: '#efe7f8',
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  chatPanelHeader: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eadcff',
+  },
+  chatPanelAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatPanelTitleWrap: {
+    flex: 1,
+  },
+  chatPanelName: {
+    color: '#251044',
+    fontWeight: '900',
+    fontSize: 17,
+  },
+  chatPanelSubtitle: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  chatHeaderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageList: {
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  dayPill: {
+    alignSelf: 'center',
+    backgroundColor: '#ffffff',
+    color: '#7f6a9f',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 12,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  messageRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  messageRowMine: {
+    justifyContent: 'flex-end',
+  },
+  messageBubble: {
+    maxWidth: '82%',
+    minWidth: 88,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  messageBubbleTheirs: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 6,
+  },
+  messageBubbleMine: {
+    backgroundColor: '#7c3aed',
+    borderTopRightRadius: 6,
+  },
+  messageText: {
+    color: '#251044',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '700',
+  },
+  messageTextMine: {
+    color: '#ffffff',
+  },
+  messageTime: {
+    color: '#8b7aa8',
+    fontSize: 10,
+    fontWeight: '900',
+    alignSelf: 'flex-end',
+    marginTop: 5,
+  },
+  messageTimeMine: {
+    color: '#e9d5ff',
+  },
+  composerRow: {
+    backgroundColor: '#ffffff',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eadcff',
+  },
+  composerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerInput: {
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 96,
+    borderRadius: 19,
+    backgroundColor: '#fbf8ff',
+    color: '#251044',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    fontWeight: '700',
+  },
+  sendButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonMuted: {
+    backgroundColor: '#c4b5fd',
   },
   unreadBadge: {
     width: 27,
