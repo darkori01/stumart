@@ -20,6 +20,14 @@
     },
     "web": {
       "favicon": "./assets/stumart-logo.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Stumart uses your photos so vendors can upload product and skill images."
+        }
+      ]
+    ]
   }
 }

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
@@ -21,6 +22,7 @@ type VerificationStatus = 'verified' | 'pending';
 type PriceType = 'Fixed' | 'Negotiable';
 type ListingKind = 'Product' | 'Skill';
 type Tab = 'Home' | 'Dashboard' | 'Products' | 'Reels' | 'Chats' | 'Saved' | 'Studio';
+type StudioMode = 'menu' | 'addListing';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 type Account = {
@@ -62,6 +64,16 @@ type ChatMessage = {
   from: 'me' | 'them';
   text: string;
   time: string;
+};
+
+type ChatThread = {
+  id: string;
+  name: string;
+  subtitle: string;
+  status: string;
+  avatar: string;
+  tag?: string;
+  messages: ChatMessage[];
 };
 
 const logo = require('./assets/stumart-logo.png');
@@ -205,7 +217,7 @@ const chats = [
 
 const categories = ['All', 'Beauty', 'Food', 'Design', 'Fashion'];
 const quickNeeds = ['Glow up', 'Birthday prep', 'Brand launch', 'Clean kicks'];
-const initialVendorListings = listings.filter((listing) => listing.vendor === 'Ama Beauty Lab');
+const demoVendorName = 'Ama Beauty Lab';
 
 const activeOrders = [
   { id: 'o1', customer: 'Nana Y.', item: 'Soft glam and wig styling', amount: 'GHS 120', status: 'Due today' },
@@ -219,7 +231,7 @@ const vendorMessages = [
   { id: 'vm3', customer: 'Akua M.', last: 'Can we agree on GHS 90?', tag: 'Offer' },
 ];
 
-const customerChatThreads = [
+const customerChatThreads: ChatThread[] = [
   {
     id: 'c1',
     name: 'Ama Beauty Lab',
@@ -269,7 +281,16 @@ const customerChatThreads = [
   },
 ];
 
-const vendorChatThreads = [
+const vendorChatThreads: ChatThread[] = [
+  {
+    id: 'vm-toni',
+    name: 'Toni Customer',
+    subtitle: 'Ama Beauty Lab purchase chat',
+    status: 'Customer lead',
+    avatar: 'T',
+    tag: 'Lead',
+    messages: [],
+  },
   {
     id: 'vm1',
     name: 'Nana Y.',
@@ -335,13 +356,15 @@ export default function App() {
   const [activeNeed, setActiveNeed] = useState(quickNeeds[0]);
   const [likedReels, setLikedReels] = useState<string[]>(['r1']);
   const [savedIds, setSavedIds] = useState<string[]>(['l2']);
+  const [marketListings, setMarketListings] = useState<Listing[]>(listings);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(listings[0]);
   const [vendorPageListing, setVendorPageListing] = useState<Listing | null>(null);
-  const [vendorListings, setVendorListings] = useState<Listing[]>(initialVendorListings);
+  const [studioMode, setStudioMode] = useState<StudioMode>('menu');
   const [newListingKind, setNewListingKind] = useState<ListingKind>('Skill');
   const [newListingTitle, setNewListingTitle] = useState('');
   const [newListingPrice, setNewListingPrice] = useState('');
-  const [selectedChatId, setSelectedChatId] = useState('c1');
+  const [newListingImageUri, setNewListingImageUri] = useState('');
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
   const [sentMessagesByThread, setSentMessagesByThread] = useState<Record<string, ChatMessage[]>>({});
   const [search, setSearch] = useState('');
@@ -352,7 +375,7 @@ export default function App() {
   }, []);
 
   const filteredListings = useMemo(() => {
-    return listings.filter((listing) => {
+    return marketListings.filter((listing) => {
       const matchesCategory = activeCategory === 'All' || listing.category === activeCategory;
       const matchesSearch =
         listing.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -361,14 +384,20 @@ export default function App() {
 
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, search]);
+  }, [activeCategory, marketListings, search]);
 
-  const savedListings = listings.filter((listing) => savedIds.includes(listing.id));
+  const vendorListings = useMemo(
+    () => marketListings.filter((listing) => listing.vendor === demoVendorName),
+    [marketListings],
+  );
+  const savedListings = marketListings.filter((listing) => savedIds.includes(listing.id));
   const chatThreads = role === 'vendor' ? vendorChatThreads : customerChatThreads;
-  const selectedChat = chatThreads.find((thread) => thread.id === selectedChatId) ?? chatThreads[0];
-  const selectedMessages = [...selectedChat.messages, ...(sentMessagesByThread[selectedChat.id] ?? [])];
+  const selectedChat = selectedChatId ? chatThreads.find((thread) => thread.id === selectedChatId) ?? null : null;
+  const selectedMessages = selectedChat
+    ? [...selectedChat.messages, ...(sentMessagesByThread[selectedChat.id] ?? [])]
+    : [];
   const vendorPageListings = vendorPageListing
-    ? listings.filter((listing) => listing.vendor === vendorPageListing.vendor)
+    ? marketListings.filter((listing) => listing.vendor === vendorPageListing.vendor)
     : [];
 
   const toggleSaved = (id: string) => {
@@ -396,6 +425,18 @@ export default function App() {
     resetAuthForm();
   };
 
+  const openAddListingForm = (kind?: ListingKind) => {
+    if (kind) {
+      setNewListingKind(kind);
+    }
+    setStudioMode('addListing');
+    setActiveTab('Studio');
+  };
+
+  const closeAddListingForm = () => {
+    setStudioMode('menu');
+  };
+
   const handleSignin = () => {
     const normalizedEmail = authEmail.trim().toLowerCase();
     const account = accounts.find(
@@ -415,6 +456,8 @@ export default function App() {
     setAuthMessage('');
     setIsAuthenticated(true);
     setActiveTab(account.role === 'vendor' ? 'Dashboard' : 'Home');
+    setSelectedChatId(null);
+    setMessageDraft('');
   };
 
   const handleSignup = () => {
@@ -462,6 +505,25 @@ export default function App() {
     setActiveTab('Home');
   };
 
+  const pickListingImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Photo permission needed', 'Allow photo library access so your product or skill image can be uploaded.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (!result.canceled && result.assets[0]?.uri) {
+      setNewListingImageUri(result.assets[0].uri);
+    }
+  };
+
   const addVendorListing = () => {
     const trimmedTitle = newListingTitle.trim();
     const trimmedPrice = newListingPrice.trim();
@@ -475,7 +537,7 @@ export default function App() {
     const listing: Listing = {
       id: `vendor-${Date.now()}`,
       title: trimmedTitle,
-      vendor: 'Ama Beauty Lab',
+      vendor: demoVendorName,
       category: newListingKind === 'Skill' ? 'Beauty' : 'Product',
       kind: newListingKind,
       price: trimmedPrice.toUpperCase().startsWith('GHS') ? trimmedPrice : `GHS ${trimmedPrice}`,
@@ -487,16 +549,21 @@ export default function App() {
           ? 'A skill-based service from this student vendor. Customers can negotiate before booking.'
           : 'A product-based listing from this student vendor. Price is fixed for checkout.',
       image:
-        newListingKind === 'Skill'
+        newListingImageUri ||
+        (newListingKind === 'Skill'
           ? 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=80'
-          : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
+          : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80'),
       tint: newListingKind === 'Skill' ? '#a78bfa' : '#8b5cf6',
       tags: [newListingKind, priceType, 'Vendor added'],
     };
 
-    setVendorListings((current) => [listing, ...current]);
+    setMarketListings((current) => [listing, ...current]);
+    setSelectedListing(listing);
+    setVendorPageListing(null);
     setNewListingTitle('');
     setNewListingPrice('');
+    setNewListingImageUri('');
+    setStudioMode('menu');
     setActiveTab('Products');
   };
 
@@ -521,10 +588,38 @@ export default function App() {
     setActiveTab('Chats');
   };
 
+  const openChatThread = (threadId: string) => {
+    setSelectedChatId(threadId);
+    setMessageDraft('');
+  };
+
+  const closeChatThread = () => {
+    setSelectedChatId(null);
+    setMessageDraft('');
+  };
+
+  const getLinkedThreadId = (threadId: string) => {
+    if (role === 'customer') {
+      const customerThread = customerChatThreads.find((thread) => thread.id === threadId);
+      return customerThread?.name === 'Ama Beauty Lab' ? 'vm-toni' : null;
+    }
+
+    return threadId === 'vm-toni' ? 'c1' : null;
+  };
+
+  const getThreadMessages = (thread: ChatThread) => [
+    ...thread.messages,
+    ...(sentMessagesByThread[thread.id] ?? []),
+  ];
+
   const sendMessage = () => {
     const trimmedMessage = messageDraft.trim();
 
     if (!trimmedMessage) {
+      return;
+    }
+
+    if (!selectedChat) {
       return;
     }
 
@@ -536,10 +631,20 @@ export default function App() {
       text: trimmedMessage,
       time,
     };
+    const linkedThreadId = getLinkedThreadId(selectedChat.id);
+    const linkedMessage: ChatMessage = {
+      id: `${linkedThreadId ?? selectedChat.id}-${now.getTime()}`,
+      from: 'them',
+      text: trimmedMessage,
+      time,
+    };
 
     setSentMessagesByThread((current) => ({
       ...current,
       [selectedChat.id]: [...(current[selectedChat.id] ?? []), nextMessage],
+      ...(linkedThreadId
+        ? { [linkedThreadId]: [...(current[linkedThreadId] ?? []), linkedMessage] }
+        : {}),
     }));
     setMessageDraft('');
   };
@@ -738,7 +843,14 @@ export default function App() {
                 <Text style={styles.appTitle}>{role === 'vendor' ? 'Ama Beauty Lab' : 'Stumart'}</Text>
               </View>
             </View>
-            <Pressable style={styles.profilePill} onPress={() => setIsAuthenticated(false)}>
+            <Pressable
+              style={styles.profilePill}
+              onPress={() => {
+                setIsAuthenticated(false);
+                setSelectedChatId(null);
+                setMessageDraft('');
+              }}
+            >
               <Text style={styles.profileInitial}>{role === 'customer' ? 'C' : 'V'}</Text>
             </Pressable>
           </View>
@@ -817,8 +929,11 @@ export default function App() {
 
             <View style={styles.vendorActionGrid}>
               {[
-                { label: 'Reply to clients', icon: 'chatbubble-ellipses-outline' as IconName, action: () => setActiveTab('Chats') },
-                { label: 'Add listing', icon: 'add-circle-outline' as IconName, action: () => setActiveTab('Studio') },
+                { label: 'Reply to clients', icon: 'chatbubble-ellipses-outline' as IconName, action: () => {
+                  closeChatThread();
+                  setActiveTab('Chats');
+                } },
+                { label: 'Add listing', icon: 'add-circle-outline' as IconName, action: () => openAddListingForm() },
                 { label: 'View catalog', icon: 'pricetags-outline' as IconName, action: () => setActiveTab('Products') },
                 { label: 'Post reel', icon: 'play-circle-outline' as IconName, action: () => setActiveTab('Reels') },
               ].map((item) => (
@@ -853,27 +968,31 @@ export default function App() {
               <Text style={styles.sectionTitle}>Client messages</Text>
               <Text style={styles.sectionMeta}>Latest</Text>
             </View>
-            {vendorChatThreads.map((message) => (
-              <Pressable
-                key={message.id}
-                style={styles.chatRow}
-                onPress={() => {
-                  setSelectedChatId(message.id);
-                  setActiveTab('Chats');
-                }}
-              >
-                <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
-                  <Text style={styles.chatAvatarText}>{message.avatar}</Text>
-                </LinearGradient>
-                <View style={styles.chatBody}>
-                  <Text style={styles.chatName}>{message.name}</Text>
-                  <Text style={styles.chatLast}>{message.messages[message.messages.length - 1].text}</Text>
-                </View>
-                <View style={styles.messageTag}>
-                  <Text style={styles.messageTagText}>{message.tag}</Text>
-                </View>
-              </Pressable>
-            ))}
+            {vendorChatThreads.map((message) => {
+              const threadMessages = getThreadMessages(message);
+              const lastMessage = threadMessages[threadMessages.length - 1];
+              return (
+                <Pressable
+                  key={message.id}
+                  style={styles.chatRow}
+                  onPress={() => {
+                    setSelectedChatId(message.id);
+                    setActiveTab('Chats');
+                  }}
+                >
+                  <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                    <Text style={styles.chatAvatarText}>{message.avatar}</Text>
+                  </LinearGradient>
+                  <View style={styles.chatBody}>
+                    <Text style={styles.chatName}>{message.name}</Text>
+                    <Text style={styles.chatLast}>{lastMessage?.text ?? message.subtitle}</Text>
+                  </View>
+                  <View style={styles.messageTag}>
+                    <Text style={styles.messageTagText}>{message.tag}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </>
         )}
 
@@ -881,8 +1000,12 @@ export default function App() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Your catalog</Text>
-              <Text style={styles.sectionMeta}>{vendorListings.length} live</Text>
+              <Pressable style={styles.catalogAddButton} onPress={() => openAddListingForm('Product')}>
+                <Ionicons name="add-circle" size={17} color="#ffffff" />
+                <Text style={styles.catalogAddButtonText}>Add product</Text>
+              </Pressable>
             </View>
+            <Text style={styles.catalogMeta}>{vendorListings.length} live products and skills</Text>
             <View style={styles.ruleBox}>
               <Ionicons name="information-circle-outline" size={20} color="#7c3aed" />
               <Text style={styles.ruleText}>
@@ -892,13 +1015,7 @@ export default function App() {
             {vendorListings.map((listing) => (
               <View key={listing.id} style={styles.vendorProductCard}>
                 <View style={styles.vendorProductTop}>
-                  <View style={styles.vendorProductIcon}>
-                    <Ionicons
-                      name={listing.kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
-                      size={22}
-                      color="#7c3aed"
-                    />
-                  </View>
+                  <Image source={{ uri: listing.image }} style={styles.vendorProductThumb} />
                   <View style={styles.flex}>
                     <Text style={styles.listingTitle}>{listing.title}</Text>
                     <Text style={styles.vendorName}>{listing.kind} based listing</Text>
@@ -1105,83 +1222,98 @@ export default function App() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{role === 'vendor' ? 'Client messages' : 'Campus chats'}</Text>
-              <Text style={styles.sectionMeta}>{chatThreads.length} active</Text>
+              <Text style={styles.sectionMeta}>{selectedChat ? 'Private chat' : `${chatThreads.length} contacts`}</Text>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.threadRail}>
-              {chatThreads.map((thread) => {
-                const isSelected = selectedChat.id === thread.id;
-                return (
-                  <Pressable
-                    key={thread.id}
-                    style={[styles.threadChip, isSelected && styles.threadChipActive]}
-                    onPress={() => setSelectedChatId(thread.id)}
-                  >
-                    <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.threadChipAvatar}>
-                      <Text style={styles.chatAvatarText}>{thread.avatar}</Text>
-                    </LinearGradient>
-                    <View style={styles.threadChipTextWrap}>
-                      <Text style={[styles.threadChipName, isSelected && styles.threadChipNameActive]}>
-                        {thread.name}
-                      </Text>
-                      <Text style={[styles.threadChipStatus, isSelected && styles.threadChipStatusActive]}>
-                        {thread.status}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.chatPanel}>
-              <View style={styles.chatPanelHeader}>
-                <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatPanelAvatar}>
-                  <Text style={styles.chatAvatarText}>{selectedChat.avatar}</Text>
-                </LinearGradient>
-                <View style={styles.chatPanelTitleWrap}>
-                  <Text style={styles.chatPanelName}>{selectedChat.name}</Text>
-                  <Text style={styles.chatPanelSubtitle}>{selectedChat.subtitle}</Text>
+            {!selectedChat ? (
+              <>
+                <View style={styles.chatPrivacyNotice}>
+                  <Ionicons name="lock-closed-outline" size={19} color="#7c3aed" />
+                  <Text style={styles.chatPrivacyText}>
+                    Select a contact to open a private conversation.
+                  </Text>
                 </View>
-                <Pressable style={styles.chatHeaderIcon}>
-                  <Ionicons name="call-outline" size={20} color="#7c3aed" />
-                </Pressable>
-              </View>
 
-              <View style={styles.messageList}>
-                <Text style={styles.dayPill}>Today</Text>
-                {selectedMessages.map((message) => {
-                  const mine = message.from === 'me';
+                {chatThreads.map((thread) => {
+                  const threadMessages = getThreadMessages(thread);
+                  const lastMessage = threadMessages[threadMessages.length - 1];
                   return (
-                    <View key={message.id} style={[styles.messageRow, mine && styles.messageRowMine]}>
-                      <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleTheirs]}>
-                        <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.text}</Text>
-                        <Text style={[styles.messageTime, mine && styles.messageTimeMine]}>{message.time}</Text>
+                    <Pressable key={thread.id} style={styles.chatRow} onPress={() => openChatThread(thread.id)}>
+                      <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                        <Text style={styles.chatAvatarText}>{thread.avatar}</Text>
+                      </LinearGradient>
+                      <View style={styles.chatBody}>
+                        <Text style={styles.chatName}>{thread.name}</Text>
+                        <Text style={styles.chatLast}>{lastMessage?.text ?? thread.subtitle}</Text>
                       </View>
-                    </View>
+                      <View style={styles.messageTag}>
+                        <Text style={styles.messageTagText}>{thread.tag ?? thread.status}</Text>
+                      </View>
+                    </Pressable>
                   );
                 })}
-              </View>
+              </>
+            ) : (
+              <View style={styles.chatPanel}>
+                <View style={styles.chatPanelHeader}>
+                  <Pressable style={styles.chatHeaderIcon} onPress={closeChatThread}>
+                    <Ionicons name="chevron-back" size={20} color="#7c3aed" />
+                  </Pressable>
+                  <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatPanelAvatar}>
+                    <Text style={styles.chatAvatarText}>{selectedChat.avatar}</Text>
+                  </LinearGradient>
+                  <View style={styles.chatPanelTitleWrap}>
+                    <Text style={styles.chatPanelName}>{selectedChat.name}</Text>
+                    <Text style={styles.chatPanelSubtitle}>{selectedChat.subtitle}</Text>
+                  </View>
+                  <Pressable style={styles.chatHeaderIcon}>
+                    <Ionicons name="call-outline" size={20} color="#7c3aed" />
+                  </Pressable>
+                </View>
 
-              <View style={styles.composerRow}>
-                <Pressable style={styles.composerIcon}>
-                  <Ionicons name="add" size={21} color="#7c3aed" />
-                </Pressable>
-                <TextInput
-                  value={messageDraft}
-                  onChangeText={setMessageDraft}
-                  placeholder={role === 'vendor' ? 'Reply to customer' : 'Message vendor'}
-                  placeholderTextColor="#9f8fb8"
-                  multiline
-                  style={styles.composerInput}
-                />
-                <Pressable
-                  style={[styles.sendButton, !messageDraft.trim() && styles.sendButtonMuted]}
-                  onPress={sendMessage}
-                >
-                  <Ionicons name="send" size={18} color="#ffffff" />
-                </Pressable>
+                <View style={styles.messageList}>
+                  <Text style={styles.dayPill}>Today</Text>
+                  {selectedMessages.map((message) => {
+                    const mine = message.from === 'me';
+                    return (
+                      <View key={message.id} style={[styles.messageRow, mine && styles.messageRowMine]}>
+                        <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleTheirs]}>
+                          <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.text}</Text>
+                          <Text style={[styles.messageTime, mine && styles.messageTimeMine]}>{message.time}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                  {selectedMessages.length === 0 && (
+                    <View style={styles.emptyChatState}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={28} color="#a78bfa" />
+                      <Text style={styles.emptyTitle}>No messages yet</Text>
+                      <Text style={styles.emptyCopy}>Start the conversation when you are ready.</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.composerRow}>
+                  <Pressable style={styles.composerIcon}>
+                    <Ionicons name="add" size={21} color="#7c3aed" />
+                  </Pressable>
+                  <TextInput
+                    value={messageDraft}
+                    onChangeText={setMessageDraft}
+                    placeholder={role === 'vendor' ? 'Reply to customer' : 'Message vendor'}
+                    placeholderTextColor="#9f8fb8"
+                    multiline
+                    style={styles.composerInput}
+                  />
+                  <Pressable
+                    style={[styles.sendButton, !messageDraft.trim() && styles.sendButtonMuted]}
+                    onPress={sendMessage}
+                  >
+                    <Ionicons name="send" size={18} color="#ffffff" />
+                  </Pressable>
+                </View>
               </View>
-            </View>
+            )}
           </>
         )}
 
@@ -1214,81 +1346,111 @@ export default function App() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Vendor studio</Text>
-              <Text style={styles.sectionMeta}>Add and manage</Text>
+              <Text style={styles.sectionMeta}>{studioMode === 'addListing' ? 'New listing' : 'Add and manage'}</Text>
             </View>
-            <LinearGradient colors={['#8b5cf6', '#c084fc']} style={styles.studioHero}>
-              <Image source={logo} style={styles.studioLogo} resizeMode="contain" />
-              <Text style={styles.studioTitle}>Build the front of your campus business.</Text>
-              <Text style={styles.studioCopy}>
-                Add products or skills, post reels, reply to customers, and keep your listings ready for orders.
-              </Text>
-            </LinearGradient>
 
-            <View style={styles.addListingPanel}>
-              <Text style={styles.detailTitle}>Add a product or skill</Text>
-              <Text style={styles.detailCopy}>
-                Choose Product for fixed pricing or Skill for negotiable pricing.
-              </Text>
-              <View style={styles.kindSwitch}>
-                {(['Skill', 'Product'] as ListingKind[]).map((kind) => (
-                  <Pressable
-                    key={kind}
-                    onPress={() => setNewListingKind(kind)}
-                    style={[styles.kindButton, newListingKind === kind && styles.kindButtonActive]}
-                  >
-                    <Ionicons
-                      name={kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
-                      size={18}
-                      color={newListingKind === kind ? '#ffffff' : '#7c3aed'}
-                    />
-                    <Text style={[styles.kindButtonText, newListingKind === kind && styles.kindButtonTextActive]}>
-                      {kind}
-                    </Text>
+            {studioMode === 'menu' ? (
+              <>
+                <LinearGradient colors={['#8b5cf6', '#c084fc']} style={styles.studioHero}>
+                  <Image source={logo} style={styles.studioLogo} resizeMode="contain" />
+                  <Text style={styles.studioTitle}>Build the front of your campus business.</Text>
+                  <Text style={styles.studioCopy}>
+                    Add products or skills, post reels, reply to customers, and keep your listings ready for orders.
+                  </Text>
+                </LinearGradient>
+
+                {[
+                  { title: 'Add product or skill', icon: 'add-circle-outline' as IconName, action: () => openAddListingForm() },
+                  { title: 'Upload reel', icon: 'cloud-upload-outline' as IconName, action: () => setActiveTab('Reels') },
+                  { title: 'View products and skills', icon: 'pricetags-outline' as IconName, action: () => setActiveTab('Products') },
+                  { title: 'Review orders and offers', icon: 'receipt-outline' as IconName, action: () => setActiveTab('Dashboard') },
+                ].map((item) => (
+                  <Pressable key={item.title} style={styles.studioAction} onPress={item.action}>
+                    <View style={styles.studioActionLeft}>
+                      <Ionicons name={item.icon} size={22} color="#7c3aed" />
+                      <Text style={styles.studioActionText}>{item.title}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#a78bfa" />
                   </Pressable>
                 ))}
-              </View>
-              <View style={styles.ruleBox}>
-                <Ionicons name="pricetag-outline" size={18} color="#7c3aed" />
-                <Text style={styles.ruleText}>
-                  {newListingKind === 'Skill'
-                    ? 'This will be saved as Negotiable because it is a skill-based service.'
-                    : 'This will be saved as Fixed because it is a product-based listing.'}
-                </Text>
-              </View>
-              <TextInput
-                value={newListingTitle}
-                onChangeText={setNewListingTitle}
-                placeholder={newListingKind === 'Skill' ? 'e.g. Wig installation' : 'e.g. Hair care kit'}
-                placeholderTextColor="#9f8fb8"
-                style={styles.input}
-              />
-              <TextInput
-                value={newListingPrice}
-                onChangeText={setNewListingPrice}
-                placeholder="Price, e.g. GHS 120"
-                placeholderTextColor="#9f8fb8"
-                keyboardType="default"
-                style={styles.input}
-              />
-              <Pressable style={styles.primaryButton} onPress={addVendorListing}>
-                <Text style={styles.primaryButtonText}>Add to catalog</Text>
-                <Ionicons name="add-circle" size={18} color="#ffffff" />
-              </Pressable>
-            </View>
+              </>
+            ) : (
+              <>
+                <Pressable style={styles.backButton} onPress={closeAddListingForm}>
+                  <Ionicons name="chevron-back" size={19} color="#7c3aed" />
+                  <Text style={styles.backButtonText}>Back to studio</Text>
+                </Pressable>
 
-            {[
-              { title: 'Upload reel', icon: 'cloud-upload-outline' as IconName, action: () => setActiveTab('Reels') },
-              { title: 'View products and skills', icon: 'pricetags-outline' as IconName, action: () => setActiveTab('Products') },
-              { title: 'Review orders and offers', icon: 'receipt-outline' as IconName, action: () => setActiveTab('Dashboard') },
-            ].map((item) => (
-              <Pressable key={item.title} style={styles.studioAction} onPress={item.action}>
-                <View style={styles.studioActionLeft}>
-                  <Ionicons name={item.icon} size={22} color="#7c3aed" />
-                  <Text style={styles.studioActionText}>{item.title}</Text>
+                <View style={styles.addListingPanel}>
+                  <Text style={styles.detailTitle}>Add a product or skill</Text>
+                  <Text style={styles.detailCopy}>
+                    Choose Product for fixed pricing or Skill for negotiable pricing.
+                  </Text>
+                  <View style={styles.kindSwitch}>
+                    {(['Skill', 'Product'] as ListingKind[]).map((kind) => (
+                      <Pressable
+                        key={kind}
+                        onPress={() => setNewListingKind(kind)}
+                        style={[styles.kindButton, newListingKind === kind && styles.kindButtonActive]}
+                      >
+                        <Ionicons
+                          name={kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
+                          size={18}
+                          color={newListingKind === kind ? '#ffffff' : '#7c3aed'}
+                        />
+                        <Text style={[styles.kindButtonText, newListingKind === kind && styles.kindButtonTextActive]}>
+                          {kind}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={styles.ruleBox}>
+                    <Ionicons name="pricetag-outline" size={18} color="#7c3aed" />
+                    <Text style={styles.ruleText}>
+                      {newListingKind === 'Skill'
+                        ? 'This will be saved as Negotiable because it is a skill-based service.'
+                        : 'This will be saved as Fixed because it is a product-based listing.'}
+                    </Text>
+                  </View>
+                  <Pressable style={styles.photoUploadBox} onPress={pickListingImage}>
+                    {newListingImageUri ? (
+                      <Image source={{ uri: newListingImageUri }} style={styles.photoPreview} />
+                    ) : (
+                      <View style={styles.photoUploadEmpty}>
+                        <Ionicons name="image-outline" size={28} color="#7c3aed" />
+                        <Text style={styles.photoUploadTitle}>Upload listing photo</Text>
+                        <Text style={styles.photoUploadCopy}>Use a clear image of the product or finished service.</Text>
+                      </View>
+                    )}
+                    {newListingImageUri && (
+                      <View style={styles.photoReplaceBadge}>
+                        <Ionicons name="camera-outline" size={15} color="#ffffff" />
+                        <Text style={styles.photoReplaceText}>Replace photo</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  <TextInput
+                    value={newListingTitle}
+                    onChangeText={setNewListingTitle}
+                    placeholder={newListingKind === 'Skill' ? 'e.g. Wig installation' : 'e.g. Hair care kit'}
+                    placeholderTextColor="#9f8fb8"
+                    style={styles.input}
+                  />
+                  <TextInput
+                    value={newListingPrice}
+                    onChangeText={setNewListingPrice}
+                    placeholder="Price, e.g. GHS 120"
+                    placeholderTextColor="#9f8fb8"
+                    keyboardType="default"
+                    style={styles.input}
+                  />
+                  <Pressable style={styles.primaryButton} onPress={addVendorListing}>
+                    <Text style={styles.primaryButtonText}>Add to catalog</Text>
+                    <Ionicons name="add-circle" size={18} color="#ffffff" />
+                  </Pressable>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#a78bfa" />
-              </Pressable>
-            ))}
+              </>
+            )}
           </>
         )}
       </ScrollView>
@@ -1302,7 +1464,19 @@ export default function App() {
           return (
             <Pressable
               key={tab}
-              onPress={() => setActiveTab(tab)}
+              onPress={() => {
+                if (tab === 'Chats') {
+                  closeChatThread();
+                } else {
+                  setMessageDraft('');
+                }
+
+                if (tab !== 'Home') {
+                  setVendorPageListing(null);
+                }
+
+                setActiveTab(tab);
+              }}
               style={[styles.tabButton, isActive && styles.tabButtonActive]}
             >
               <Ionicons
@@ -1943,6 +2117,26 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '800',
   },
+  catalogAddButton: {
+    backgroundColor: '#7c3aed',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  catalogAddButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  catalogMeta: {
+    color: '#8b7aa8',
+    fontWeight: '800',
+    marginTop: -6,
+    marginBottom: 12,
+  },
   vendorProductCard: {
     backgroundColor: '#ffffff',
     borderRadius: 24,
@@ -1963,6 +2157,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3e8ff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  vendorProductThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#f3e8ff',
   },
   vendorProductPrice: {
     color: '#7c3aed',
@@ -2418,6 +2618,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 19,
   },
+  chatPrivacyNotice: {
+    backgroundColor: '#f5edff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  chatPrivacyText: {
+    flex: 1,
+    color: '#6f5d8d',
+    fontSize: 12,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
   threadRail: {
     marginBottom: 12,
   },
@@ -2513,6 +2731,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 16,
     gap: 8,
+  },
+  emptyChatState: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#eadcff',
   },
   dayPill: {
     alignSelf: 'center',
@@ -2702,6 +2928,57 @@ const styles = StyleSheet.create({
   },
   kindButtonTextActive: {
     color: '#ffffff',
+  },
+  photoUploadBox: {
+    minHeight: 170,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#d8b4fe',
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    backgroundColor: '#fbf8ff',
+  },
+  photoUploadEmpty: {
+    flex: 1,
+    minHeight: 170,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  photoUploadTitle: {
+    color: '#251044',
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 10,
+  },
+  photoUploadCopy: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  photoPreview: {
+    width: '100%',
+    height: 190,
+  },
+  photoReplaceBadge: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    backgroundColor: '#7c3aed',
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoReplaceText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
   },
   studioLogo: {
     width: 56,
