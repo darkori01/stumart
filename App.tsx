@@ -18,6 +18,16 @@ import {
 
 type Role = 'customer' | 'vendor';
 type AuthMode = 'signin' | 'signup';
+type AuthFlow =
+  | 'signin'
+  | 'signupEmail'
+  | 'signupCode'
+  | 'signupPassword'
+  | 'google'
+  | 'forgotEmail'
+  | 'forgotCode'
+  | 'forgotPassword';
+type VerificationPurpose = 'signup' | 'forgot';
 type VerificationStatus = 'verified' | 'pending';
 type PriceType = 'Fixed' | 'Negotiable';
 type ListingKind = 'Product' | 'Skill';
@@ -32,6 +42,15 @@ type Account = {
   name: string;
   verificationStatus: VerificationStatus;
   hasSchoolIdEvidence: boolean;
+};
+
+type PendingVerification = {
+  purpose: VerificationPurpose;
+  role: Role;
+  name: string;
+  email: string;
+  code: string;
+  expiresAt: number;
 };
 
 type Listing = {
@@ -57,6 +76,8 @@ type Reel = {
   views: string;
   caption: string;
   image: string;
+  music: string;
+  comments: string;
 };
 
 type ChatMessage = {
@@ -171,6 +192,8 @@ const reels: Reel[] = [
     title: 'Install reveal before the hall dinner',
     views: '8.2K',
     caption: 'A quick glow-up reel from booking to final look.',
+    music: 'Fangs (Slowed Down) · Dionnyuss',
+    comments: '26',
     image:
       'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?auto=format&fit=crop&w=900&q=80',
   },
@@ -180,6 +203,8 @@ const reels: Reel[] = [
     title: 'Sketch to launch-ready logo',
     views: '3.7K',
     caption: 'Turning a thrift brand idea into a clean campus identity.',
+    music: 'Studio Beats · Nia',
+    comments: '18',
     image:
       'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80',
   },
@@ -189,6 +214,8 @@ const reels: Reel[] = [
     title: 'Packing a surprise cake box',
     views: '5.4K',
     caption: 'Small-batch treats for a hostel birthday surprise.',
+    music: 'Afternoon Vibes · Campus Kitchen',
+    comments: '12',
     image:
       'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?auto=format&fit=crop&w=900&q=80',
   },
@@ -343,18 +370,22 @@ const tabConfig: Record<Tab, { icon: IconName; activeIcon: IconName }> = {
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authMode, setAuthMode] = useState<AuthMode>('signin');
+  const [authFlow, setAuthFlow] = useState<AuthFlow>('signin');
   const [role, setRole] = useState<Role>('customer');
   const [accounts, setAccounts] = useState<Account[]>(demoAccounts);
   const [authMessage, setAuthMessage] = useState('');
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pendingVerification, setPendingVerification] = useState<PendingVerification | null>(null);
   const [vendorEvidenceAttached, setVendorEvidenceAttached] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('Home');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeNeed, setActiveNeed] = useState(quickNeeds[0]);
   const [likedReels, setLikedReels] = useState<string[]>(['r1']);
+  const [subscribedVendors, setSubscribedVendors] = useState<string[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>(['l2']);
   const [marketListings, setMarketListings] = useState<Listing[]>(listings);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(listings[0]);
@@ -412,17 +443,189 @@ export default function App() {
     );
   };
 
+  const toggleSubscribe = (vendor: string) => {
+    setSubscribedVendors((current) =>
+      current.includes(vendor) ? current.filter((item) => item !== vendor) : [...current, vendor],
+    );
+  };
+
+  const shareReel = (reel: Reel) => {
+    Alert.alert('Share reel', `Share ${reel.title} by ${reel.vendor} with friends.`);
+  };
+
   const resetAuthForm = () => {
     setAuthMessage('');
     setAuthName('');
     setAuthEmail('');
     setAuthPassword('');
+    setVerificationCode('');
+    setNewPassword('');
+    setPendingVerification(null);
     setVendorEvidenceAttached(false);
   };
 
   const switchAuthMode = (mode: AuthMode) => {
-    setAuthMode(mode);
+    setAuthFlow(mode === 'signup' ? 'signupEmail' : 'signin');
     resetAuthForm();
+  };
+
+  const openAuthFlow = (flow: AuthFlow) => {
+    setAuthFlow(flow);
+    setAuthMessage('');
+    setVerificationCode('');
+    setNewPassword('');
+    if (flow === 'google' || flow === 'signin') {
+      setAuthPassword('');
+    }
+    if (flow === 'forgotEmail' || flow === 'signupEmail' || flow === 'signin') {
+      setPendingVerification(null);
+      setVendorEvidenceAttached(false);
+    }
+  };
+
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const createVerificationCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+  const sendVerificationEmail = (email: string, code: string, purpose: VerificationPurpose) => {
+    const title = purpose === 'forgot' ? 'Password reset code sent' : 'Signup code sent';
+    Alert.alert(title, `A verification code was sent to ${email}. Demo email code: ${code}`);
+  };
+
+  const beginForgotPassword = () => {
+    const normalizedEmail = authEmail.trim().toLowerCase();
+    const account = accounts.find(
+      (item) => item.email.toLowerCase() === normalizedEmail && item.role === role,
+    );
+
+    if (!isValidEmail(normalizedEmail)) {
+      setAuthMessage('Enter the email you used to sign up.');
+      return;
+    }
+
+    if (!account) {
+      setAuthMessage('No account was found for this email and role.');
+      return;
+    }
+
+    const code = createVerificationCode();
+    setPendingVerification({
+      purpose: 'forgot',
+      role,
+      name: account.name,
+      email: normalizedEmail,
+      code,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    sendVerificationEmail(normalizedEmail, code, 'forgot');
+    setAuthMessage('');
+    setAuthFlow('forgotCode');
+  };
+
+  const beginSignup = () => {
+    const trimmedName = authName.trim();
+    const normalizedEmail = authEmail.trim().toLowerCase();
+
+    if (!trimmedName || !isValidEmail(normalizedEmail)) {
+      setAuthMessage('Enter your name and a valid email address.');
+      return;
+    }
+
+    if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail && account.role === role)) {
+      setAuthMessage('An account already exists for this email and role.');
+      return;
+    }
+
+    const code = createVerificationCode();
+    setPendingVerification({
+      purpose: 'signup',
+      role,
+      name: trimmedName,
+      email: normalizedEmail,
+      code,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    sendVerificationEmail(normalizedEmail, code, 'signup');
+    setAuthMessage('');
+    setAuthFlow('signupCode');
+  };
+
+  const verifyPendingCode = () => {
+    if (!pendingVerification) {
+      setAuthMessage('Start the process again so we can send a fresh code.');
+      return;
+    }
+
+    if (Date.now() > pendingVerification.expiresAt) {
+      setAuthMessage('That code expired. Send a new code to continue.');
+      return;
+    }
+
+    if (verificationCode.trim() !== pendingVerification.code) {
+      setAuthMessage('The code does not match the one sent to your email.');
+      return;
+    }
+
+    setVerificationCode('');
+    setAuthMessage('');
+    setAuthFlow(pendingVerification.purpose === 'forgot' ? 'forgotPassword' : 'signupPassword');
+  };
+
+  const completePasswordStep = () => {
+    if (!pendingVerification) {
+      setAuthMessage('Start the process again so this password can be saved.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setAuthMessage('Choose a password with at least 6 characters.');
+      return;
+    }
+
+    if (pendingVerification.purpose === 'forgot') {
+      setAccounts((current) =>
+        current.map((account) =>
+          account.email.toLowerCase() === pendingVerification.email && account.role === pendingVerification.role
+            ? { ...account, password: newPassword }
+            : account,
+        ),
+      );
+      setAuthEmail(pendingVerification.email);
+      setAuthPassword('');
+      setNewPassword('');
+      setPendingVerification(null);
+      setAuthFlow('signin');
+      setAuthMessage('Password updated. Log in with your new password.');
+      return;
+    }
+
+    if (pendingVerification.role === 'vendor' && !vendorEvidenceAttached) {
+      setAuthMessage('Vendors must attach school ID evidence before the account can be submitted.');
+      return;
+    }
+
+    setAccounts((current) => [
+      ...current,
+      {
+        email: pendingVerification.email,
+        password: newPassword,
+        role: pendingVerification.role,
+        name: pendingVerification.name,
+        verificationStatus: pendingVerification.role === 'vendor' ? 'pending' : 'verified',
+        hasSchoolIdEvidence: pendingVerification.role === 'vendor',
+      },
+    ]);
+    setAuthEmail(pendingVerification.email);
+    setAuthPassword('');
+    setNewPassword('');
+    setVendorEvidenceAttached(false);
+    setPendingVerification(null);
+    setAuthFlow('signin');
+    setAuthMessage(
+      pendingVerification.role === 'vendor'
+        ? 'Account submitted for school ID review. Login opens after verification.'
+        : 'Account created. Log in with your new password.',
+    );
   };
 
   const openAddListingForm = (kind?: ListingKind) => {
@@ -460,49 +663,56 @@ export default function App() {
     setMessageDraft('');
   };
 
-  const handleSignup = () => {
+  const handleGoogleContinue = () => {
+    const trimmedName = authName.trim() || (role === 'customer' ? 'Google Customer' : 'Google Vendor');
     const normalizedEmail = authEmail.trim().toLowerCase();
-    const trimmedName = authName.trim();
 
-    if (!trimmedName || !normalizedEmail || authPassword.length < 6) {
-      setAuthMessage('Add your name, email, and a password with at least 6 characters.');
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setAuthMessage('Enter the email connected to your Google account.');
       return;
     }
 
-    if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail && account.role === role)) {
-      setAuthMessage('An account already exists for this role.');
+    const existingAccount = accounts.find(
+      (account) => account.email.toLowerCase() === normalizedEmail && account.role === role,
+    );
+
+    if (existingAccount?.role === 'vendor' && existingAccount.verificationStatus !== 'verified') {
+      setAuthMessage('This vendor account is still waiting for school ID verification.');
       return;
     }
 
-    if (role === 'vendor' && !vendorEvidenceAttached) {
-      setAuthMessage('Vendors must attach school ID photo evidence before submission.');
+    if (!existingAccount && role === 'vendor' && !vendorEvidenceAttached) {
+      setAuthMessage('Attach school ID evidence so the vendor account can be reviewed.');
       return;
     }
 
-    const newAccount: Account = {
-      email: normalizedEmail,
-      password: authPassword,
-      role,
-      name: trimmedName,
-      verificationStatus: role === 'vendor' ? 'pending' : 'verified',
-      hasSchoolIdEvidence: role === 'vendor',
-    };
+    if (!existingAccount) {
+      setAccounts((current) => [
+        ...current,
+        {
+          email: normalizedEmail,
+          password: `google-${Date.now()}`,
+          role,
+          name: trimmedName,
+          verificationStatus: role === 'vendor' ? 'pending' : 'verified',
+          hasSchoolIdEvidence: role === 'vendor',
+        },
+      ]);
+    }
 
-    setAccounts((current) => [...current, newAccount]);
-
-    if (role === 'vendor') {
-      setAuthMode('signin');
-      setAuthMessage('Vendor signup submitted. Login opens after school ID verification.');
+    if (role === 'vendor' && !existingAccount) {
+      setAuthFlow('signin');
       setAuthName('');
-      setAuthPassword('');
+      setAuthEmail(normalizedEmail);
       setVendorEvidenceAttached(false);
-      Alert.alert('Verification needed', 'Your vendor account is pending school ID review before login is enabled.');
+      setAuthMessage('Google vendor profile submitted. Login opens after school ID verification.');
+      Alert.alert('Verification needed', 'Your Google vendor profile is pending school ID review.');
       return;
     }
 
     setAuthMessage('');
     setIsAuthenticated(true);
-    setActiveTab('Home');
+    setActiveTab(role === 'vendor' ? 'Dashboard' : 'Home');
   };
 
   const pickListingImage = async () => {
@@ -672,7 +882,15 @@ export default function App() {
           </View>
 
           <View style={styles.authHero}>
-            <Text style={styles.authTitle}>{authMode === 'signin' ? 'Welcome Back!' : 'Create Account'}</Text>
+            <Text style={styles.authTitle}>
+              {authFlow === 'signin'
+                ? 'Welcome Back!'
+                : authFlow.startsWith('signup')
+                  ? 'Create Account'
+                  : authFlow === 'google'
+                    ? 'Continue with Google'
+                    : 'Reset Password'}
+            </Text>
             <View style={styles.segmentedControl}>
               {(['customer', 'vendor'] as Role[]).map((option) => (
                 <Pressable
@@ -696,9 +914,9 @@ export default function App() {
             </View>
           </View>
 
-          {authMode === 'signin' && (
+          {authFlow === 'signin' && (
             <View style={styles.authPanel}>
-              <Pressable style={styles.googleButton}>
+              <Pressable style={styles.googleButton} onPress={() => openAuthFlow('google')}>
                 <Ionicons name="logo-google" size={17} color="#ffffff" />
                 <Text style={styles.googleButtonText}>Log In via Google</Text>
               </Pressable>
@@ -728,7 +946,7 @@ export default function App() {
                 secureTextEntry
                 style={styles.underlinedInput}
               />
-              <Pressable>
+              <Pressable onPress={() => openAuthFlow('forgotEmail')}>
                 <Text style={styles.forgotLink}>Forgot password?</Text>
               </Pressable>
 
@@ -743,13 +961,17 @@ export default function App() {
             </View>
           )}
 
-          {authMode === 'signup' && (
+          {authFlow === 'signupEmail' && (
             <View style={styles.authPanel}>
-              <Text style={styles.signupHint}>
-                {role === 'vendor'
-                  ? 'Vendor accounts need school ID evidence before approval.'
-                  : 'Customer accounts can start browsing after signup.'}
-              </Text>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="person-add-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Start your Stumart profile</Text>
+                  <Text style={styles.flowCopy}>Enter your name and email. The next page verifies your inbox.</Text>
+                </View>
+              </View>
 
               <Text style={styles.formLabel}>Full name</Text>
               <TextInput
@@ -769,17 +991,92 @@ export default function App() {
                 keyboardType="email-address"
                 style={styles.underlinedInput}
               />
-              <Text style={styles.formLabel}>Password</Text>
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={beginSignup}>
+                <Text style={styles.authSubmitText}>Next</Text>
+              </Pressable>
+              <Pressable onPress={() => switchAuthMode('signin')}>
+                <Text style={styles.authSwitchText}>Already have an account? Log in</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'signupCode' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="mail-unread-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Check your email</Text>
+                  <Text style={styles.flowCopy}>
+                    We sent a 6-digit signup code to {pendingVerification?.email ?? 'your email'}.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>Verification code</Text>
               <TextInput
-                value={authPassword}
-                onChangeText={setAuthPassword}
+                value={verificationCode}
+                onChangeText={setVerificationCode}
+                placeholder="Enter 6-digit code"
+                placeholderTextColor="#9f8fb8"
+                keyboardType="number-pad"
+                maxLength={6}
+                style={styles.underlinedInput}
+              />
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={verifyPendingCode}>
+                <Text style={styles.authSubmitText}>Verify Code</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (pendingVerification) {
+                    sendVerificationEmail(
+                      pendingVerification.email,
+                      pendingVerification.code,
+                      pendingVerification.purpose,
+                    );
+                  }
+                }}
+              >
+                <Text style={styles.authSwitchText}>Resend code</Text>
+              </Pressable>
+              <Pressable onPress={() => openAuthFlow('signupEmail')}>
+                <Text style={styles.authSwitchText}>Use a different email</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'signupPassword' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="lock-closed-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Create your password</Text>
+                  <Text style={styles.flowCopy}>
+                    This saves your account so you can return to login with this email.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>New password</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
                 placeholder="At least 6 characters"
                 placeholderTextColor="#9f8fb8"
                 secureTextEntry
                 style={styles.underlinedInput}
               />
 
-              {role === 'vendor' && (
+              {pendingVerification?.role === 'vendor' && (
                 <Pressable
                   onPress={() => {
                     setVendorEvidenceAttached(true);
@@ -798,7 +1095,7 @@ export default function App() {
                 </Pressable>
               )}
 
-              {role === 'vendor' && (
+              {pendingVerification?.role === 'vendor' && (
                 <View style={styles.verificationNote}>
                   <Ionicons name="shield-checkmark-outline" size={18} color="#7c3aed" />
                   <Text style={styles.verificationText}>
@@ -809,13 +1106,192 @@ export default function App() {
 
               {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
 
-              <Pressable style={styles.authSubmitButton} onPress={handleSignup}>
-                <Text style={styles.authSubmitText}>
-                  {role === 'vendor' ? 'Submit for Verification' : 'Create Account'}
-                </Text>
+              <Pressable style={styles.authSubmitButton} onPress={completePasswordStep}>
+                <Text style={styles.authSubmitText}>Save Account</Text>
               </Pressable>
-              <Pressable onPress={() => switchAuthMode('signin')}>
-                <Text style={styles.authSwitchText}>Already have an account? Log in</Text>
+              <Pressable onPress={() => openAuthFlow('signin')}>
+                <Text style={styles.authSwitchText}>Back to login</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'google' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="logo-google" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Finish secure sign in</Text>
+                  <Text style={styles.flowCopy}>
+                    Confirm the campus profile that should be linked to Google for this role.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>Full name</Text>
+              <TextInput
+                value={authName}
+                onChangeText={setAuthName}
+                placeholder={role === 'vendor' ? 'Vendor or brand owner name' : 'Your name'}
+                placeholderTextColor="#9f8fb8"
+                style={styles.underlinedInput}
+              />
+              <Text style={styles.formLabel}>Google email</Text>
+              <TextInput
+                value={authEmail}
+                onChangeText={setAuthEmail}
+                placeholder={role === 'vendor' ? 'vendor@gmail.com' : 'student@gmail.com'}
+                placeholderTextColor="#9f8fb8"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={styles.underlinedInput}
+              />
+
+              {role === 'vendor' && (
+                <Pressable
+                  onPress={() => {
+                    setVendorEvidenceAttached(true);
+                    setAuthMessage('');
+                  }}
+                  style={[styles.evidenceButton, vendorEvidenceAttached && styles.evidenceButtonReady]}
+                >
+                  <Ionicons
+                    name={vendorEvidenceAttached ? 'checkmark-circle' : 'id-card-outline'}
+                    size={20}
+                    color={vendorEvidenceAttached ? '#ffffff' : '#7c3aed'}
+                  />
+                  <Text style={[styles.evidenceText, vendorEvidenceAttached && styles.evidenceTextReady]}>
+                    {vendorEvidenceAttached ? 'School ID ready for review' : 'Add school ID evidence'}
+                  </Text>
+                </Pressable>
+              )}
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={handleGoogleContinue}>
+                <Text style={styles.authSubmitText}>Continue</Text>
+              </Pressable>
+              <Pressable onPress={() => openAuthFlow('signin')}>
+                <Text style={styles.authSwitchText}>Back to email login</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'forgotEmail' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="key-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Recover your account</Text>
+                  <Text style={styles.flowCopy}>
+                    Enter the email you used to sign up. We will send a reset code next.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>Account email</Text>
+              <TextInput
+                value={authEmail}
+                onChangeText={setAuthEmail}
+                placeholder={role === 'vendor' ? 'vendor@stumart.app' : 'customer@stumart.app'}
+                placeholderTextColor="#9f8fb8"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={styles.underlinedInput}
+              />
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={beginForgotPassword}>
+                <Text style={styles.authSubmitText}>Next</Text>
+              </Pressable>
+              <Pressable onPress={() => openAuthFlow('signin')}>
+                <Text style={styles.authSwitchText}>Back to login</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'forgotCode' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="mail-open-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Enter reset code</Text>
+                  <Text style={styles.flowCopy}>
+                    Check {pendingVerification?.email ?? 'your email'} for the 6-digit reset code.
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>Recovery code</Text>
+              <TextInput
+                value={verificationCode}
+                onChangeText={setVerificationCode}
+                placeholder="Enter 6-digit code"
+                placeholderTextColor="#9f8fb8"
+                keyboardType="number-pad"
+                maxLength={6}
+                style={styles.underlinedInput}
+              />
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={verifyPendingCode}>
+                <Text style={styles.authSubmitText}>Verify Code</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (pendingVerification) {
+                    sendVerificationEmail(
+                      pendingVerification.email,
+                      pendingVerification.code,
+                      pendingVerification.purpose,
+                    );
+                  }
+                }}
+              >
+                <Text style={styles.authSwitchText}>Resend code</Text>
+              </Pressable>
+              <Pressable onPress={() => openAuthFlow('forgotEmail')}>
+                <Text style={styles.authSwitchText}>Use a different email</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authFlow === 'forgotPassword' && (
+            <View style={styles.authPanel}>
+              <View style={styles.flowHeader}>
+                <View style={styles.flowIconWrap}>
+                  <Ionicons name="shield-checkmark-outline" size={22} color="#7c3aed" />
+                </View>
+                <View style={styles.flowHeaderText}>
+                  <Text style={styles.flowTitle}>Set a new password</Text>
+                  <Text style={styles.flowCopy}>Your account is verified. Save a new password and return to login.</Text>
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>New password</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="At least 6 characters"
+                placeholderTextColor="#9f8fb8"
+                secureTextEntry
+                style={styles.underlinedInput}
+              />
+
+              {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+
+              <Pressable style={styles.authSubmitButton} onPress={completePasswordStep}>
+                <Text style={styles.authSubmitText}>Update Password</Text>
+              </Pressable>
+              <Pressable onPress={() => openAuthFlow('signin')}>
+                <Text style={styles.authSwitchText}>Back to login</Text>
               </Pressable>
             </View>
           )}
@@ -853,6 +1329,10 @@ export default function App() {
             >
               <Text style={styles.profileInitial}>{role === 'customer' ? 'C' : 'V'}</Text>
             </Pressable>
+          </View>
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={16} color="#7c3aed" />
+            <Text style={styles.locationText}>KNUST • Oforikrom</Text>
           </View>
           <Text style={styles.heroLine}>
             {role === 'vendor'
@@ -1133,6 +1613,68 @@ export default function App() {
             </ScrollView>
 
             <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Most ordered</Text>
+              <Text style={styles.sectionMeta}>Campus favorites</Text>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mostOrderedRow}>
+              {filteredListings.slice(0, 3).map((listing) => (
+                <View key={listing.id} style={styles.mostOrderedCard}>
+                  <Image source={{ uri: listing.image }} style={styles.mostOrderedImage} />
+                  <View style={styles.mostOrderedBody}>
+                    <Text style={styles.mostOrderedRating}>★ {listing.rating}</Text>
+                    <Text style={styles.mostOrderedTitle} numberOfLines={1}>{listing.title}</Text>
+                    <Text style={styles.mostOrderedVendor}>{listing.vendor}</Text>
+                  </View>
+                  <View style={styles.addPill}>
+                    <Ionicons name="add" size={14} color="#ffffff" />
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.promoBannerContainer}>
+              <ImageBackground
+                source={{ uri: filteredListings[1]?.image }}
+                imageStyle={styles.promoBannerImageStyle}
+                style={styles.promoBanner}
+              >
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.05)', 'rgba(37, 16, 68, 0.85)']}
+                  style={styles.promoBannerShade}
+                >
+                  <Text style={styles.promoTitle}>The best check check fried rice in Oforikrom?</Text>
+                  <Text style={styles.promoCopy}>Served only at Check Check Brothers</Text>
+                  <Pressable style={styles.promoButton}>
+                    <Text style={styles.promoButtonText}>Get yours</Text>
+                  </Pressable>
+                </LinearGradient>
+              </ImageBackground>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>What's for lunch</Text>
+              <Text style={styles.sectionMeta}>Fresh campus picks</Text>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.whatsForLunchRow}>
+              {filteredListings.slice(0, 3).map((listing) => (
+                <Pressable
+                  key={listing.id}
+                  onPress={() => openVendorListingPage(listing)}
+                  style={styles.lunchCard}
+                >
+                  <Image source={{ uri: listing.image }} style={styles.lunchImage} />
+                  <View style={styles.lunchInfo}>
+                    <Text style={styles.lunchTitle} numberOfLines={1}>{listing.title}</Text>
+                    <Text style={styles.lunchVendor}>{listing.vendor}</Text>
+                    <Text style={styles.lunchPrice}>{listing.price}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Campus picks</Text>
               <Text style={styles.sectionMeta}>{filteredListings.length} near you</Text>
             </View>
@@ -1193,28 +1735,66 @@ export default function App() {
         {activeTab === 'Reels' && (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Vendor reels</Text>
-              <Text style={styles.sectionMeta}>Tap hearts to save inspo</Text>
+              <Text style={styles.sectionTitle}>Campus reels</Text>
+              <Text style={styles.sectionMeta}>Vendor ads to bookmark</Text>
             </View>
-            {reels.map((reel) => (
-              <ImageBackground key={reel.id} source={{ uri: reel.image }} imageStyle={styles.reelImage} style={styles.reelCard}>
-                <LinearGradient colors={['transparent', 'rgba(55, 28, 91, 0.92)']} style={styles.reelOverlay}>
-                  <View style={styles.reelTopRow}>
-                    <Text style={styles.reelBadge}>{reel.views} views</Text>
-                    <Pressable style={styles.reelIconButton} onPress={() => toggleReelLike(reel.id)}>
-                      <Ionicons
-                        name={likedReels.includes(reel.id) ? 'heart' : 'heart-outline'}
-                        size={22}
-                        color={likedReels.includes(reel.id) ? '#f0abfc' : '#ffffff'}
-                      />
-                    </Pressable>
-                  </View>
-                  <Text style={styles.reelTitle}>{reel.title}</Text>
-                  <Text style={styles.reelVendor}>{reel.vendor}</Text>
-                  <Text style={styles.reelCaption}>{reel.caption}</Text>
-                </LinearGradient>
-              </ImageBackground>
-            ))}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              contentContainerStyle={styles.reelFeed}
+            >
+              {reels.map((reel) => (
+                <ImageBackground
+                  key={reel.id}
+                  source={{ uri: reel.image }}
+                  imageStyle={styles.reelImage}
+                  style={styles.reelCard}
+                >
+                  <LinearGradient colors={['transparent', 'rgba(37, 16, 68, 0.92)']} style={styles.reelOverlay}>
+                    <View style={styles.reelTopRow}>
+                      <Text style={styles.reelBadge}>{reel.views} views</Text>
+                      <View style={styles.reelActionStrip}>
+                        <Pressable style={styles.reelIconButton} onPress={() => toggleReelLike(reel.id)}>
+                          <Ionicons
+                            name={likedReels.includes(reel.id) ? 'heart' : 'heart-outline'}
+                            size={24}
+                            color={likedReels.includes(reel.id) ? '#f0abfc' : '#ffffff'}
+                          />
+                        </Pressable>
+                        <Pressable style={styles.reelIconButton} onPress={() => shareReel(reel)}>
+                          <Ionicons name="share-social-outline" size={24} color="#ffffff" />
+                        </Pressable>
+                      </View>
+                    </View>
+                    <View style={styles.reelVendorRow}>
+                      <Text style={styles.reelVendorHandle}>@{reel.vendor}</Text>
+                      <Pressable
+                        style={[
+                          styles.subscribeButton,
+                          subscribedVendors.includes(reel.vendor) && styles.subscribeButtonActive,
+                        ]}
+                        onPress={() => toggleSubscribe(reel.vendor)}
+                      >
+                        <Text
+                          style={[
+                            styles.subscribeButtonText,
+                            subscribedVendors.includes(reel.vendor) && styles.subscribeButtonTextActive,
+                          ]}
+                        >
+                          {subscribedVendors.includes(reel.vendor) ? 'Following' : 'Subscribe'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <Text style={styles.reelTitle}>{reel.title}</Text>
+                    <Text style={styles.reelCaption}>{reel.caption}</Text>
+                    <View style={styles.reelBottomRow}>
+                      <Text style={styles.reelMusicText}>🎵 {reel.music}</Text>
+                      <Text style={styles.reelCommentText}>{reel.comments} comments</Text>
+                    </View>
+                  </LinearGradient>
+                </ImageBackground>
+              ))}
+            </ScrollView>
           </>
         )}
 
@@ -1618,11 +2198,15 @@ const styles = StyleSheet.create({
   },
   authPanel: {
     backgroundColor: '#ffffff',
-    borderRadius: 26,
+    borderRadius: 8,
     padding: 22,
     gap: 11,
     borderWidth: 1,
     borderColor: '#eadcff',
+    shadowColor: '#4c1d95',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
   },
   segmentedControl: {
     flexDirection: 'row',
@@ -1726,7 +2310,7 @@ const styles = StyleSheet.create({
   },
   authSubmitButton: {
     backgroundColor: '#9b5cff',
-    borderRadius: 999,
+    borderRadius: 8,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 10,
@@ -1749,6 +2333,40 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '700',
     marginBottom: 3,
+  },
+  flowHeader: {
+    backgroundColor: '#fbf8ff',
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    borderRadius: 8,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 4,
+  },
+  flowIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flowHeaderText: {
+    flex: 1,
+  },
+  flowTitle: {
+    color: '#251044',
+    fontWeight: '900',
+    fontSize: 15,
+    marginBottom: 3,
+  },
+  flowCopy: {
+    color: '#6f5d8d',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   evidenceButton: {
     borderWidth: 1,
@@ -1910,10 +2528,161 @@ const styles = StyleSheet.create({
   needChipTextActive: {
     color: '#ffffff',
   },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+  },
+  locationText: {
+    color: '#7c3aed',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  quickActionRow: {
+    marginTop: 14,
+  },
+  quickActionButton: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionButtonText: {
+    color: '#7c3aed',
+    fontWeight: '900',
+  },
   vendorHeroStats: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 14,
+  },
+  mostOrderedRow: {
+    marginBottom: 16,
+  },
+  mostOrderedCard: {
+    width: 188,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+  },
+  mostOrderedImage: {
+    width: '100%',
+    height: 120,
+  },
+  mostOrderedBody: {
+    padding: 12,
+  },
+  mostOrderedRating: {
+    color: '#7c3aed',
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  mostOrderedTitle: {
+    color: '#251044',
+    fontWeight: '900',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  mostOrderedVendor: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  addPill: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: '#7c3aed',
+    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  promoBannerContainer: {
+    marginBottom: 18,
+  },
+  promoBanner: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    minHeight: 170,
+    justifyContent: 'flex-end',
+  },
+  promoBannerImageStyle: {
+    borderRadius: 28,
+  },
+  promoBannerShade: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 18,
+  },
+  promoTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  promoCopy: {
+    color: '#f5edff',
+    fontWeight: '800',
+    marginBottom: 14,
+  },
+  promoButton: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    alignSelf: 'flex-start',
+  },
+  promoButtonText: {
+    color: '#7c3aed',
+    fontWeight: '900',
+  },
+  whatsForLunchRow: {
+    marginBottom: 16,
+  },
+  lunchCard: {
+    width: 170,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#eadcff',
+    overflow: 'hidden',
+  },
+  lunchImage: {
+    width: '100%',
+    height: 110,
+  },
+  lunchInfo: {
+    padding: 12,
+  },
+  lunchTitle: {
+    color: '#251044',
+    fontWeight: '900',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  lunchVendor: {
+    color: '#7f6a9f',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  lunchPrice: {
+    color: '#7c3aed',
+    fontWeight: '900',
   },
   vendorHeroStat: {
     flex: 1,
@@ -2527,9 +3296,12 @@ const styles = StyleSheet.create({
     color: '#7c3aed',
     fontWeight: '900',
   },
+  reelFeed: {
+    paddingBottom: 16,
+  },
   reelCard: {
-    height: 430,
-    marginBottom: 16,
+    height: 520,
+    marginBottom: 18,
     justifyContent: 'flex-end',
     overflow: 'hidden',
     borderRadius: 30,
@@ -2551,6 +3323,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  reelActionStrip: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reelVendorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  reelVendorHandle: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  subscribeButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  subscribeButtonActive: {
+    backgroundColor: '#ffffff',
+  },
+  subscribeButtonText: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  subscribeButtonTextActive: {
+    color: '#7c3aed',
+  },
+  reelBottomRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reelMusicText: {
+    color: '#d8c4ff',
+    fontWeight: '700',
+    flex: 1,
+  },
+  reelCommentText: {
+    color: '#f5edff',
+    fontWeight: '800',
   },
   reelBadge: {
     color: '#ffffff',
