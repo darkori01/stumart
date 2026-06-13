@@ -53,6 +53,13 @@ type PendingVerification = {
   expiresAt: number;
 };
 
+type VerificationNotification = {
+  purpose: VerificationPurpose;
+  role: Role;
+  email: string;
+  code: string;
+};
+
 type Listing = {
   id: string;
   title: string;
@@ -380,6 +387,7 @@ export default function App() {
   const [verificationCode, setVerificationCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [pendingVerification, setPendingVerification] = useState<PendingVerification | null>(null);
+  const [lastSentVerification, setLastSentVerification] = useState<VerificationNotification | null>(null);
   const [vendorEvidenceAttached, setVendorEvidenceAttached] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('Home');
   const [activeCategory, setActiveCategory] = useState('All');
@@ -487,8 +495,15 @@ export default function App() {
 
   const createVerificationCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-  const sendVerificationEmail = (email: string, code: string, purpose: VerificationPurpose) => {
+  const sendVerificationEmail = (
+    email: string,
+    code: string,
+    purpose: VerificationPurpose,
+    role: Role,
+  ) => {
     const title = purpose === 'forgot' ? 'Password reset code sent' : 'Signup code sent';
+    setLastSentVerification({ email, code, purpose, role });
+    setAuthMessage(`A verification code was sent to ${email}.`);
     Alert.alert(title, `A verification code was sent to ${email}. Demo email code: ${code}`);
   };
 
@@ -517,7 +532,7 @@ export default function App() {
       code,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
-    sendVerificationEmail(normalizedEmail, code, 'forgot');
+    sendVerificationEmail(normalizedEmail, code, 'forgot', role);
     setAuthMessage('');
     setAuthFlow('forgotCode');
   };
@@ -545,7 +560,7 @@ export default function App() {
       code,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
-    sendVerificationEmail(normalizedEmail, code, 'signup');
+    sendVerificationEmail(normalizedEmail, code, 'signup', role);
     setAuthMessage('');
     setAuthFlow('signupCode');
   };
@@ -1029,6 +1044,10 @@ export default function App() {
               />
 
               {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+              {lastSentVerification?.email === pendingVerification?.email &&
+                lastSentVerification?.purpose === pendingVerification?.purpose && (
+                  <Text style={styles.authHint}>Demo email code: {lastSentVerification?.code}</Text>
+                )}
 
               <Pressable style={styles.authSubmitButton} onPress={verifyPendingCode}>
                 <Text style={styles.authSubmitText}>Verify Code</Text>
@@ -1040,6 +1059,7 @@ export default function App() {
                       pendingVerification.email,
                       pendingVerification.code,
                       pendingVerification.purpose,
+                      pendingVerification.role,
                     );
                   }
                 }}
@@ -1240,6 +1260,10 @@ export default function App() {
               />
 
               {!!authMessage && <Text style={styles.authMessage}>{authMessage}</Text>}
+              {lastSentVerification?.email === pendingVerification?.email &&
+                lastSentVerification?.purpose === pendingVerification?.purpose && (
+                  <Text style={styles.authHint}>Demo email code: {lastSentVerification?.code}</Text>
+                )}
 
               <Pressable style={styles.authSubmitButton} onPress={verifyPendingCode}>
                 <Text style={styles.authSubmitText}>Verify Code</Text>
@@ -1251,6 +1275,7 @@ export default function App() {
                       pendingVerification.email,
                       pendingVerification.code,
                       pendingVerification.purpose,
+                      pendingVerification.role,
                     );
                   }
                 }}
@@ -2307,6 +2332,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  authHint: {
+    color: '#7c3aed',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '900',
+    marginTop: 8,
   },
   authSubmitButton: {
     backgroundColor: '#9b5cff',
