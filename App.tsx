@@ -7,6 +7,7 @@ import {
   Alert,
   Image,
   ImageBackground,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -389,6 +390,16 @@ export default function App() {
   const [pendingVerification, setPendingVerification] = useState<PendingVerification | null>(null);
   const [lastSentVerification, setLastSentVerification] = useState<VerificationNotification | null>(null);
   const [vendorEvidenceAttached, setVendorEvidenceAttached] = useState(false);
+  const [vendorWorkingDays, setVendorWorkingDays] = useState('');
+  const [vendorWorkingHours, setVendorWorkingHours] = useState('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileEmailLocal, setProfileEmailLocal] = useState('');
+  const [profileOriginalEmail, setProfileOriginalEmail] = useState('');
+  const [profileDays, setProfileDays] = useState('');
+  const [profileHours, setProfileHours] = useState('');
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('Home');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeNeed, setActiveNeed] = useState(quickNeeds[0]);
@@ -425,6 +436,10 @@ export default function App() {
     });
   }, [activeCategory, marketListings, search]);
 
+  const currentAccount = useMemo(
+    () => accounts.find((account) => account.email.toLowerCase() === authEmail.toLowerCase() && account.role === role),
+    [accounts, authEmail, role],
+  );
   const vendorListings = useMemo(
     () => marketListings.filter((listing) => listing.vendor === demoVendorName),
     [marketListings],
@@ -438,6 +453,26 @@ export default function App() {
   const vendorPageListings = vendorPageListing
     ? marketListings.filter((listing) => listing.vendor === vendorPageListing.vendor)
     : [];
+
+  const parsePriceNumber = (priceStr: string | undefined) => {
+    if (!priceStr) return NaN;
+    const m = priceStr.replace(/[,]/g, '').match(/(\d+(?:\.\d+)?)/);
+    return m ? parseFloat(m[0]) : NaN;
+  };
+
+  const computeAverageAmount = (items: Listing[]) => {
+    const nums = items.map((i) => parsePriceNumber(i.price)).filter((n) => !Number.isNaN(n));
+    if (!nums.length) return null;
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return Math.round(sum / nums.length);
+  };
+
+  const vendorMetaMap: Record<string, { days: string; hours: string }> = {
+    'Ama Beauty Lab': { days: 'Mon - Sat', hours: '10:00 AM - 7:00 PM' },
+    'Kobby Bakes': { days: 'Tue - Sat', hours: '9:00 AM - 6:00 PM' },
+    'Nia Design Co.': { days: 'Mon - Fri', hours: '9:00 AM - 5:00 PM' },
+  };
+
 
   const toggleSaved = (id: string) => {
     setSavedIds((current) =>
@@ -495,7 +530,9 @@ export default function App() {
 
   const createVerificationCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-  const sendVerificationEmail = (
+  const EMAIL_SERVER = 'http://localhost:4000';
+
+  const sendVerificationEmail = async (
     email: string,
     code: string,
     purpose: VerificationPurpose,
@@ -504,7 +541,27 @@ export default function App() {
     const title = purpose === 'forgot' ? 'Password reset code sent' : 'Signup code sent';
     setLastSentVerification({ email, code, purpose, role });
     setAuthMessage(`A verification code was sent to ${email}.`);
-    Alert.alert(title, `A verification code was sent to ${email}. Demo email code: ${code}`);
+
+    try {
+      const res = await fetch(`${EMAIL_SERVER}/send-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code, purpose }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.info === 'smtp-not-configured') {
+          Alert.alert(title, `SMTP not configured on the email server. Demo email code: ${code}`);
+        } else {
+          Alert.alert(title, `A verification code was sent to ${email}.`);
+        }
+      } else {
+        Alert.alert('Unable to send verification', `Server error sending email. Demo code: ${code}`);
+      }
+    } catch (err) {
+      // fallback to demo behavior when no server is reachable
+      Alert.alert(title, `Unable to contact email server. Demo email code: ${code}`);
+    }
   };
 
   const beginForgotPassword = () => {
@@ -614,22 +671,43 @@ export default function App() {
       return;
     }
 
-    if (pendingVerification.role === 'vendor' && !vendorEvidenceAttached) {
-      setAuthMessage('Vendors must attach school ID evidence before the account can be submitted.');
-      return;
+    if (pendingVerification.role === 'vendor') {
+      if (!vendorEvidenceAttached) {
+        setAuthMessage('Vendors must attach school ID evidence before the account can be submitted.');
+        return;
+      }
+      if (!vendorWorkingDays.trim() || !vendorWorkingHours.trim()) {
+        setAuthMessage('Please enter your working days and hours.');
+        return;
+      }
     }
 
-    setAccounts((current) => [
-      ...current,
-      {
-        email: pendingVerification.email,
-        password: newPassword,
-        role: pendingVerification.role,
-        name: pendingVerification.name,
-        verificationStatus: pendingVerification.role === 'vendor' ? 'pending' : 'verified',
-        hasSchoolIdEvidence: pendingVerification.role === 'vendor',
-      },
-    ]);
+    const newAccount = {
+      email: pendingVerification.email,
+      password: newPassword,
+      role: pendingVerification.role,
+      name: pendingVerification.name,
+      verificationStatus: pendingVerification.role === 'vendor' ? 'pending' : 'verified',
+      hasSchoolIdEvidence: pendingVerification.role === 'vendor',
+      vendorMeta: pendingVerification.role === 'vendor' ? { days: vendorWorkingDays, hours: vendorWorkingHours } : undefined,
+    } as Account & { vendorMeta?: { days: string; hours: string } };
+
+    setAccounts((current) => [...current, newAccount]);
+
+    // Persist vendor metadata to server if vendor
+    if (pendingVerification.role === 'vendor') {
+      (async () => {
+        try {
+          await fetch(`${EMAIL_SERVER}/vendors/${encodeURIComponent(newAccount.name)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: vendorWorkingDays, hours: vendorWorkingHours }),
+          });
+        } catch (e) {
+          // ignore server errors in demo mode
+        }
+      })();
+    }
     setAuthEmail(pendingVerification.email);
     setAuthPassword('');
     setNewPassword('');
@@ -649,6 +727,115 @@ export default function App() {
     }
     setStudioMode('addListing');
     setActiveTab('Studio');
+  };
+
+  const logout = () => {
+    setIsAuthenticated(false);
+    setActiveTab('Home');
+  };
+
+  const openProfile = async () => {
+    setIsEditingProfile(false);
+    // load current account info
+    const current = currentAccount;
+    if (current) {
+      setProfileName(current.name || '');
+      setProfileEmailLocal(current.email || '');
+      setProfileOriginalEmail(current.email || '');
+      if (current.role === 'vendor') {
+        // try fetch vendor meta from server
+        try {
+          const res = await fetch(`${EMAIL_SERVER}/vendors/${encodeURIComponent(current.name)}`);
+          if (res.ok) {
+            const data = await res.json();
+            setProfileDays(data.days || '');
+            setProfileHours(data.hours || '');
+          } else {
+            setProfileDays('');
+            setProfileHours('');
+          }
+        } catch (e) {
+          setProfileDays('');
+          setProfileHours('');
+        }
+      } else {
+        setProfileDays('');
+        setProfileHours('');
+      }
+    }
+    setShowProfileModal(true);
+  };
+
+  const saveProfileChanges = async () => {
+    const trimmedName = profileName.trim();
+    const normalizedEmail = profileEmailLocal.trim().toLowerCase();
+    const originalEmail = (profileOriginalEmail || authEmail).toLowerCase();
+    const acct = accounts.find((a) => a.email.toLowerCase() === originalEmail && a.role === role);
+
+    if (!trimmedName || !isValidEmail(normalizedEmail)) {
+      Alert.alert('Update profile', 'Enter a name and a valid email before saving.');
+      return;
+    }
+
+    const emailTaken = accounts.some(
+      (account) =>
+        account.role === role &&
+        account.email.toLowerCase() === normalizedEmail &&
+        account.email.toLowerCase() !== originalEmail,
+    );
+
+    if (emailTaken) {
+      Alert.alert('Email already used', 'Use another email for this profile.');
+      return;
+    }
+
+    if (!acct) {
+      Alert.alert('Update profile', 'Open your profile again before saving changes.');
+      return;
+    }
+
+    const oldName = acct.name;
+    const updatedAccount: Account = { ...acct, name: trimmedName, email: normalizedEmail };
+
+    setAccounts((current) =>
+      current.map((account) =>
+        account.email.toLowerCase() === originalEmail && account.role === role ? updatedAccount : account,
+      ),
+    );
+    setAuthEmail(normalizedEmail);
+
+    // update listings vendor name if this is a vendor and name changed
+    if (acct.role === 'vendor' && oldName && oldName !== trimmedName) {
+      setMarketListings((current) => current.map((listing) => (
+        listing.vendor === oldName ? { ...listing, vendor: trimmedName } : listing
+      )));
+      // update vendorPageListing if open
+      if (vendorPageListing && vendorPageListing.vendor === oldName) {
+        setVendorPageListing((prev) => prev ? { ...prev, vendor: trimmedName } : prev);
+      }
+    }
+
+    // if vendor, persist vendor meta to server (use profileName as key)
+    if (acct.role === 'vendor') {
+      try {
+        await fetch(`${EMAIL_SERVER}/vendors/${encodeURIComponent(trimmedName)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: profileDays, hours: profileHours }),
+        });
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    setIsEditingProfile(false);
+    // refresh local profile display
+    setProfileName(trimmedName);
+    setProfileEmailLocal(normalizedEmail);
+    setProfileOriginalEmail(normalizedEmail);
+    setProfileDays(profileDays);
+    setProfileHours(profileHours);
+    setShowProfileModal(false);
   };
 
   const closeAddListingForm = () => {
@@ -876,8 +1063,8 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <LinearGradient colors={['#ffffff', '#f5edff', '#eadcff']} style={styles.loadingShell}>
-        <StatusBar style="dark" />
+      <LinearGradient colors={['#090514', '#120b24', '#1b1035']} style={styles.loadingShell}>
+        <StatusBar style="light" />
         <View style={styles.loadingLogoWrap}>
           <Image source={logo} style={styles.loadingLogo} resizeMode="contain" />
         </View>
@@ -889,8 +1076,8 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <LinearGradient colors={['#ffffff', '#fbf8ff', '#f3e8ff']} style={styles.authShell}>
-        <StatusBar style="dark" />
+      <LinearGradient colors={['#090514', '#120b24', '#110b24']} style={styles.authShell}>
+        <StatusBar style="light" />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.authScroll}>
           <View style={styles.authTopBar}>
             <Image source={logo} style={styles.authTopLogo} resizeMode="contain" />
@@ -919,7 +1106,7 @@ export default function App() {
                   <Ionicons
                     name={option === 'customer' ? 'bag-handle-outline' : 'storefront-outline'}
                     size={17}
-                    color={role === option ? '#ffffff' : '#7c3aed'}
+                    color={role === option ? '#ffffff' : '#ff007f'}
                   />
                   <Text style={[styles.segmentText, role === option && styles.segmentTextActive]}>
                     {option === 'customer' ? 'Customer' : 'Vendor'}
@@ -980,7 +1167,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="person-add-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="person-add-outline" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Start your Stumart profile</Text>
@@ -1022,7 +1209,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="mail-unread-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="mail-unread-outline" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Check your email</Text>
@@ -1076,7 +1263,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="lock-closed-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="lock-closed-outline" size={22} color="#ff007f" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Create your password</Text>
@@ -1107,7 +1294,7 @@ export default function App() {
                   <Ionicons
                     name={vendorEvidenceAttached ? 'checkmark-circle' : 'camera-outline'}
                     size={20}
-                    color={vendorEvidenceAttached ? '#ffffff' : '#7c3aed'}
+                    color={vendorEvidenceAttached ? '#ffffff' : '#9b5cff'}
                   />
                   <Text style={[styles.evidenceText, vendorEvidenceAttached && styles.evidenceTextReady]}>
                     {vendorEvidenceAttached ? 'School ID photo attached' : 'Attach school ID photo'}
@@ -1116,8 +1303,17 @@ export default function App() {
               )}
 
               {pendingVerification?.role === 'vendor' && (
+                <>
+                  <Text style={[styles.formLabel, { marginTop: 12 }]}>Working days</Text>
+                  <TextInput value={vendorWorkingDays} onChangeText={setVendorWorkingDays} placeholder="e.g. Mon - Sat" placeholderTextColor="#9f8fb8" style={styles.underlinedInput} />
+                  <Text style={styles.formLabel}>Working hours</Text>
+                  <TextInput value={vendorWorkingHours} onChangeText={setVendorWorkingHours} placeholder="e.g. 10:00 AM - 7:00 PM" placeholderTextColor="#9f8fb8" style={styles.underlinedInput} />
+                </>
+              )}
+
+              {pendingVerification?.role === 'vendor' && (
                 <View style={styles.verificationNote}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#7c3aed" />
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#00f2fe" />
                   <Text style={styles.verificationText}>
                     Vendor login stays locked until the ID evidence is reviewed and verified.
                   </Text>
@@ -1139,7 +1335,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="logo-google" size={22} color="#7c3aed" />
+                  <Ionicons name="logo-google" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Finish secure sign in</Text>
@@ -1202,7 +1398,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="key-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="key-outline" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Recover your account</Text>
@@ -1238,7 +1434,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="mail-open-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="mail-open-outline" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Enter reset code</Text>
@@ -1292,7 +1488,7 @@ export default function App() {
             <View style={styles.authPanel}>
               <View style={styles.flowHeader}>
                 <View style={styles.flowIconWrap}>
-                  <Ionicons name="shield-checkmark-outline" size={22} color="#7c3aed" />
+                  <Ionicons name="shield-checkmark-outline" size={22} color="#00f2fe" />
                 </View>
                 <View style={styles.flowHeaderText}>
                   <Text style={styles.flowTitle}>Set a new password</Text>
@@ -1333,30 +1529,72 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.appShell}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <LinearGradient colors={['#ffffff', '#f3e8ff']} style={styles.topCard}>
+
+        {/* Profile modal */}
+        <Modal visible={showProfileModal} transparent animationType="fade" onRequestClose={() => setShowProfileModal(false)}>
+          <View style={styles.profileModal}>
+            <View style={styles.profileCard}>
+              <View style={styles.profileHeader}>
+                <View style={styles.profileAvatar}>
+                  <Ionicons name="person" size={28} color="#9b5cff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.profileNameText}>{profileName || (role === 'vendor' ? 'Business name' : 'Your name')}</Text>
+                  <Text style={styles.profileSubText}>{profileEmailLocal}</Text>
+                </View>
+                <Pressable onPress={() => setShowProfileModal(false)}>
+                  <Ionicons name="close" size={20} color="#f3e8ff" />
+                </Pressable>
+              </View>
+
+              <View style={styles.profileBody}>
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Email</Text>
+                  <Text style={styles.profileValue}>{profileEmailLocal}</Text>
+                </View>
+
+                {role === 'vendor' && (
+                  <>
+                    <View style={styles.profileRow}>
+                      <Text style={styles.profileLabel}>Working days</Text>
+                      <Text style={styles.profileValue}>{profileDays || '—'}</Text>
+                    </View>
+                    <View style={styles.profileRow}>
+                      <Text style={styles.profileLabel}>Working hours</Text>
+                      <Text style={styles.profileValue}>{profileHours || '—'}</Text>
+                    </View>
+                  </>
+                )}
+
+                <View style={styles.profileActions}>
+                  <Pressable onPress={() => { setShowProfileModal(false); setShowProfileEditor(true); }} style={{ padding: 8 }}>
+                    <Text style={{ color: '#7c3aed', fontWeight: '800' }}>Edit profile</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { setShowProfileModal(false); logout(); }} style={{ padding: 8 }}>
+                    <Text style={{ color: '#d32f2f', fontWeight: '800' }}>Logout</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+        <LinearGradient colors={['#120b24', '#1b1035']} style={styles.topCard}>
           <View style={styles.topBar}>
-            <View style={styles.brandRow}>
+              <View style={styles.brandRow}>
               <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
               <View>
                 <Text style={styles.smallLabel}>Welcome back</Text>
-                <Text style={styles.appTitle}>{role === 'vendor' ? 'Ama Beauty Lab' : 'Stumart'}</Text>
+                <Text style={styles.appTitle}>{isAuthenticated ? (accounts.find(a => a.email.toLowerCase() === authEmail.toLowerCase())?.name ?? (role === 'vendor' ? 'Your business' : 'Stumart')) : (role === 'vendor' ? 'Ama Beauty Lab' : 'Stumart')}</Text>
               </View>
             </View>
-            <Pressable
-              style={styles.profilePill}
-              onPress={() => {
-                setIsAuthenticated(false);
-                setSelectedChatId(null);
-                setMessageDraft('');
-              }}
-            >
-              <Text style={styles.profileInitial}>{role === 'customer' ? 'C' : 'V'}</Text>
+            <Pressable style={styles.profilePill} onPress={() => openProfile()}>
+              <Ionicons name="person-circle" size={28} color="#9b5cff" />
             </Pressable>
           </View>
           <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={16} color="#7c3aed" />
+            <Ionicons name="location-outline" size={16} color="#00f2fe" />
             <Text style={styles.locationText}>KNUST • Oforikrom</Text>
           </View>
           <Text style={styles.heroLine}>
@@ -1390,6 +1628,41 @@ export default function App() {
           )}
         </LinearGradient>
 
+        {/* Full-screen profile editor */}
+        <Modal visible={showProfileEditor} animationType="slide">
+          <SafeAreaView style={{ flex: 1 }}>
+            <View style={{ padding: 16, flex: 1 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Pressable onPress={() => setShowProfileEditor(false)}>
+                  <Ionicons name="close" size={24} color="#ff007f" />
+                </Pressable>
+                <Text style={{ fontSize: 18, fontWeight: '900' }}>Edit Profile</Text>
+                <Pressable onPress={saveProfileChanges}>
+                  <Text style={{ color: '#7c3aed', fontWeight: '800' }}>Save</Text>
+                </Pressable>
+              </View>
+
+              <ScrollView style={{ marginTop: 18 }} showsVerticalScrollIndicator={false}>
+                <Text style={styles.formLabel}>{role === 'vendor' ? 'Business name' : 'Full name'}</Text>
+                <TextInput value={profileName} onChangeText={setProfileName} style={styles.editorInput} />
+
+                <Text style={styles.formLabel}>Email</Text>
+                <TextInput value={profileEmailLocal} onChangeText={setProfileEmailLocal} style={styles.editorInput} />
+
+                {role === 'vendor' && (
+                  <>
+                    <Text style={styles.formLabel}>Working days</Text>
+                    <TextInput value={profileDays} onChangeText={setProfileDays} style={styles.editorInput} placeholder="e.g. Mon - Sat" />
+
+                    <Text style={styles.formLabel}>Working hours</Text>
+                    <TextInput value={profileHours} onChangeText={setProfileHours} style={styles.editorInput} placeholder="e.g. 10:00 AM - 7:00 PM" />
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </SafeAreaView>
+        </Modal>
+
         {role === 'vendor' && activeTab === 'Dashboard' && (
           <>
             <View style={styles.sectionHeader}>
@@ -1397,7 +1670,7 @@ export default function App() {
               <Text style={styles.sectionMeta}>Today</Text>
             </View>
 
-            <LinearGradient colors={['#251044', '#7c3aed']} style={styles.vendorRevenueCard}>
+            <LinearGradient colors={['#1b1035', '#ff007f']} style={styles.vendorRevenueCard}>
               <View>
                 <Text style={styles.revenueLabel}>Today's cash made</Text>
                 <Text style={styles.revenueValue}>GHS 1,240</Text>
@@ -1418,7 +1691,7 @@ export default function App() {
               </View>
               <View style={styles.vendorMetricCard}>
                 <View style={[styles.metricIconWrap, styles.metricIconPurple]}>
-                  <Ionicons name="chatbubbles-outline" size={20} color="#7c3aed" />
+                  <Ionicons name="chatbubbles-outline" size={20} color="#ff007f" />
                 </View>
                 <Text style={styles.metricValue}>{vendorMessages.length}</Text>
                 <Text style={styles.metricLabel}>Unread chats</Text>
@@ -1456,7 +1729,7 @@ export default function App() {
             {activeOrders.map((order) => (
               <View key={order.id} style={styles.orderRow}>
                 <View style={styles.orderIcon}>
-                  <Ionicons name="bag-check-outline" size={20} color="#7c3aed" />
+                  <Ionicons name="bag-check-outline" size={20} color="#00f2fe" />
                 </View>
                 <View style={styles.chatBody}>
                   <Text style={styles.chatName}>{order.customer}</Text>
@@ -1485,7 +1758,7 @@ export default function App() {
                     setActiveTab('Chats');
                   }}
                 >
-                  <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatAvatar}>
+                  <LinearGradient colors={['#9b5cff', '#ff007f']} style={styles.chatAvatar}>
                     <Text style={styles.chatAvatarText}>{message.avatar}</Text>
                   </LinearGradient>
                   <View style={styles.chatBody}>
@@ -1512,7 +1785,7 @@ export default function App() {
             </View>
             <Text style={styles.catalogMeta}>{vendorListings.length} live products and skills</Text>
             <View style={styles.ruleBox}>
-              <Ionicons name="information-circle-outline" size={20} color="#7c3aed" />
+              <Ionicons name="information-circle-outline" size={20} color="#00f2fe" />
               <Text style={styles.ruleText}>
                 Skills use negotiable pricing. Products use fixed pricing. Choose the listing type in Studio.
               </Text>
@@ -1541,7 +1814,7 @@ export default function App() {
           vendorPageListing ? (
             <>
               <Pressable style={styles.backButton} onPress={() => setVendorPageListing(null)}>
-                <Ionicons name="chevron-back" size={19} color="#7c3aed" />
+                <Ionicons name="chevron-back" size={19} color="#ff007f" />
                 <Text style={styles.backButtonText}>Back to dashboard</Text>
               </Pressable>
 
@@ -1550,9 +1823,9 @@ export default function App() {
                 imageStyle={styles.vendorPageImage}
                 style={styles.vendorPageHero}
               >
-                <LinearGradient colors={['rgba(37, 16, 68, 0.1)', 'rgba(37, 16, 68, 0.88)']} style={styles.vendorPageShade}>
+                <LinearGradient colors={['rgba(9, 5, 20, 0.1)', 'rgba(9, 5, 20, 0.95)']} style={styles.vendorPageShade}>
                   <View style={styles.vendorPageBadge}>
-                    <Ionicons name="storefront" size={15} color="#7c3aed" />
+                    <Ionicons name="storefront" size={15} color="#ff007f" />
                     <Text style={styles.vendorPageBadgeText}>{vendorPageListings.length} listing</Text>
                   </View>
                   <Text style={styles.vendorPageTitle}>{vendorPageListing.vendor}</Text>
@@ -1560,10 +1833,26 @@ export default function App() {
                 </LinearGradient>
               </ImageBackground>
 
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Products and services</Text>
-                <Text style={styles.sectionMeta}>Tap an action</Text>
-              </View>
+                {/* Vendor quick info: working days, hours, average amount */}
+                <View style={styles.vendorInfoCard}>
+                  <View style={styles.vendorInfoRow}>
+                    <Ionicons name="calendar-outline" size={18} color="#9b5cff" />
+                    <Text style={styles.vendorInfoText}>{(vendorMetaMap[vendorPageListing.vendor]?.days) ?? 'Mon - Sat'}</Text>
+                  </View>
+                  <View style={styles.vendorInfoRow}>
+                    <Ionicons name="time-outline" size={18} color="#00f2fe" />
+                    <Text style={styles.vendorInfoText}>{(vendorMetaMap[vendorPageListing.vendor]?.hours) ?? '10:00 AM - 7:00 PM'}</Text>
+                  </View>
+                  <View style={styles.vendorInfoRow}>
+                    <Ionicons name="cash-outline" size={18} color="#ffaa00" />
+                    <Text style={styles.vendorInfoText}>{computeAverageAmount(vendorPageListings) ? `Avg: GHS ${computeAverageAmount(vendorPageListings)}` : 'Avg: —'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Products and services</Text>
+                  <Text style={styles.sectionMeta}>Tap an action</Text>
+                </View>
 
               {vendorPageListings.map((listing) => {
                 const canBargain = listing.priceType === 'Negotiable';
@@ -1598,7 +1887,7 @@ export default function App() {
                         style={[styles.bargainButton, !canBargain && styles.bargainButtonDisabled]}
                         onPress={() => openListingChat(listing, 'bargain')}
                       >
-                        <Ionicons name="pricetag" size={17} color={canBargain ? '#7c3aed' : '#9f8fb8'} />
+                        <Ionicons name="pricetag" size={17} color={canBargain ? '#00f2fe' : '#6f5d8d'} />
                         <Text style={[styles.bargainButtonText, !canBargain && styles.bargainButtonTextDisabled]}>
                           Bargain
                         </Text>
@@ -1611,7 +1900,7 @@ export default function App() {
           ) : (
           <>
             <View style={styles.searchCard}>
-              <Ionicons name="search" size={20} color="#7c3aed" />
+              <Ionicons name="search" size={20} color="#00f2fe" />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -1715,7 +2004,7 @@ export default function App() {
             ))}
 
             {selectedListing && (
-              <LinearGradient colors={['#8b5cf6', '#c084fc']} style={styles.detailPanel}>
+              <LinearGradient colors={['#1b1035', '#120b24']} style={styles.detailPanel}>
                 <Text style={styles.detailPanelTitle}>{selectedListing.title}</Text>
                 <Text style={styles.detailVendor}>{selectedListing.vendor}</Text>
                 <Text style={styles.detailPanelCopy}>{selectedListing.description}</Text>
@@ -1775,7 +2064,7 @@ export default function App() {
                   imageStyle={styles.reelImage}
                   style={styles.reelCard}
                 >
-                  <LinearGradient colors={['transparent', 'rgba(37, 16, 68, 0.92)']} style={styles.reelOverlay}>
+                  <LinearGradient colors={['transparent', 'rgba(9, 5, 20, 0.95)']} style={styles.reelOverlay}>
                     <View style={styles.reelTopRow}>
                       <Text style={styles.reelBadge}>{reel.views} views</Text>
                       <View style={styles.reelActionStrip}>
@@ -1833,7 +2122,7 @@ export default function App() {
             {!selectedChat ? (
               <>
                 <View style={styles.chatPrivacyNotice}>
-                  <Ionicons name="lock-closed-outline" size={19} color="#7c3aed" />
+                  <Ionicons name="lock-closed-outline" size={19} color="#ff007f" />
                   <Text style={styles.chatPrivacyText}>
                     Select a contact to open a private conversation.
                   </Text>
@@ -1864,7 +2153,7 @@ export default function App() {
                   <Pressable style={styles.chatHeaderIcon} onPress={closeChatThread}>
                     <Ionicons name="chevron-back" size={20} color="#7c3aed" />
                   </Pressable>
-                  <LinearGradient colors={['#c084fc', '#8b5cf6']} style={styles.chatPanelAvatar}>
+                  <LinearGradient colors={['#9b5cff', '#ff007f']} style={styles.chatPanelAvatar}>
                     <Text style={styles.chatAvatarText}>{selectedChat.avatar}</Text>
                   </LinearGradient>
                   <View style={styles.chatPanelTitleWrap}>
@@ -1891,7 +2180,7 @@ export default function App() {
                   })}
                   {selectedMessages.length === 0 && (
                     <View style={styles.emptyChatState}>
-                      <Ionicons name="chatbubble-ellipses-outline" size={28} color="#a78bfa" />
+                      <Ionicons name="chatbubble-ellipses-outline" size={28} color="#00f2fe" />
                       <Text style={styles.emptyTitle}>No messages yet</Text>
                       <Text style={styles.emptyCopy}>Start the conversation when you are ready.</Text>
                     </View>
@@ -1956,7 +2245,7 @@ export default function App() {
 
             {studioMode === 'menu' ? (
               <>
-                <LinearGradient colors={['#8b5cf6', '#c084fc']} style={styles.studioHero}>
+                <LinearGradient colors={['#1b1035', '#120b24']} style={styles.studioHero}>
                   <Image source={logo} style={styles.studioLogo} resizeMode="contain" />
                   <Text style={styles.studioTitle}>Build the front of your campus business.</Text>
                   <Text style={styles.studioCopy}>
@@ -2001,7 +2290,7 @@ export default function App() {
                         <Ionicons
                           name={kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
                           size={18}
-                          color={newListingKind === kind ? '#ffffff' : '#7c3aed'}
+                          color={newListingKind === kind ? '#ffffff' : '#ff007f'}
                         />
                         <Text style={[styles.kindButtonText, newListingKind === kind && styles.kindButtonTextActive]}>
                           {kind}
@@ -2112,7 +2401,7 @@ function ListingCard({
   return (
     <Pressable onPress={onOpen} style={styles.listingCard}>
       <ImageBackground source={{ uri: listing.image }} imageStyle={styles.listingImage} style={styles.listingMedia}>
-        <LinearGradient colors={['transparent', 'rgba(64, 30, 103, 0.72)']} style={styles.mediaShade}>
+        <LinearGradient colors={['transparent', 'rgba(9, 5, 20, 0.8)']} style={styles.mediaShade}>
           <View style={[styles.priceTag, { backgroundColor: listing.tint }]}>
             <Text style={styles.priceText}>{listing.price}</Text>
           </View>
@@ -2125,7 +2414,7 @@ function ListingCard({
             <Text style={styles.vendorName}>{listing.vendor}</Text>
           </View>
           <Pressable onPress={onSave} style={[styles.saveButton, isSaved && styles.saveButtonActive]}>
-            <Ionicons name={isSaved ? 'heart' : 'heart-outline'} size={17} color={isSaved ? '#7c3aed' : '#9f8fb8'} />
+            <Ionicons name={isSaved ? 'heart' : 'heart-outline'} size={17} color={isSaved ? '#ff007f' : '#7e6aa7'} />
             <Text style={[styles.saveButtonText, isSaved && styles.saveButtonTextActive]}>
               {isSaved ? 'Saved' : 'Save'}
             </Text>
@@ -2156,7 +2445,7 @@ function ListingCard({
 const styles = StyleSheet.create({
   appShell: {
     flex: 1,
-    backgroundColor: '#fbf8ff',
+    backgroundColor: '#090514',
   },
   loadingShell: {
     flex: 1,
@@ -2168,38 +2457,42 @@ const styles = StyleSheet.create({
     width: 138,
     height: 138,
     borderRadius: 36,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#7c3aed',
-    shadowOpacity: 0.18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(155, 92, 255, 0.3)',
+    shadowColor: '#9b5cff',
+    shadowOpacity: 0.3,
     shadowRadius: 24,
-    elevation: 8,
+    elevation: 10,
   },
   loadingLogo: {
     width: 112,
     height: 112,
   },
   loadingTitle: {
-    color: '#4c1d95',
+    color: '#ffffff',
     fontFamily: 'sans-serif-rounded',
     fontSize: 34,
     fontWeight: '900',
     marginTop: 20,
+    letterSpacing: 1,
   },
   loadingText: {
-    color: '#7e6aa7',
+    color: '#00f2fe',
     fontSize: 15,
     fontWeight: '700',
     marginTop: 8,
+    letterSpacing: 0.5,
   },
   authShell: {
     flex: 1,
   },
   authScroll: {
     flexGrow: 1,
-    paddingHorizontal: 26,
-    paddingBottom: 26,
+    paddingHorizontal: 24,
+    paddingBottom: 36,
   },
   authTopBar: {
     height: 88,
@@ -2216,75 +2509,78 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   authTitle: {
-    color: '#251044',
-    fontSize: 22,
+    color: '#ffffff',
+    fontSize: 24,
     fontWeight: '900',
     marginBottom: 18,
+    letterSpacing: 0.5,
   },
   authPanel: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
+    backgroundColor: '#120b24',
+    borderRadius: 24,
     padding: 22,
-    gap: 11,
-    borderWidth: 1,
-    borderColor: '#eadcff',
-    shadowColor: '#4c1d95',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 4,
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(155, 92, 255, 0.2)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 8,
   },
   segmentedControl: {
     flexDirection: 'row',
     width: '100%',
     maxWidth: 330,
-    backgroundColor: '#f5edff',
-    borderRadius: 22,
+    backgroundColor: '#1b1035',
+    borderRadius: 24,
     padding: 5,
   },
   segmentButton: {
     flex: 1,
     paddingVertical: 11,
-    borderRadius: 18,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 7,
   },
   segmentButtonActive: {
-    backgroundColor: '#9b5cff',
+    backgroundColor: '#ff007f',
   },
   segmentText: {
-    color: '#7c3aed',
+    color: '#bcaed4',
     fontWeight: '800',
   },
   segmentTextActive: {
     color: '#ffffff',
   },
   input: {
-    backgroundColor: '#fbf8ff',
+    backgroundColor: '#1b1035',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
     borderRadius: 18,
     paddingHorizontal: 15,
     paddingVertical: 14,
     fontSize: 15,
-    color: '#251044',
+    color: '#ffffff',
   },
   googleButton: {
-    backgroundColor: '#251044',
+    backgroundColor: '#1b1035',
     borderRadius: 999,
     paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(155, 92, 255, 0.3)',
   },
   googleButtonText: {
     color: '#ffffff',
     fontWeight: '900',
   },
   troubleText: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontSize: 11,
     textAlign: 'center',
     fontWeight: '800',
@@ -2298,54 +2594,59 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#eadcff',
+    backgroundColor: 'rgba(155, 92, 255, 0.2)',
   },
   dividerText: {
-    color: '#b4a5ca',
+    color: '#7e6aa7',
     fontWeight: '900',
     fontSize: 12,
   },
   formLabel: {
-    color: '#a798bd',
-    fontSize: 10,
+    color: '#7e6aa7',
+    fontSize: 11,
     fontWeight: '900',
     textTransform: 'uppercase',
     marginTop: 4,
+    letterSpacing: 0.5,
   },
   underlinedInput: {
-    color: '#251044',
-    borderBottomWidth: 1,
-    borderBottomColor: '#9f8fb8',
+    color: '#ffffff',
+    borderBottomWidth: 1.5,
+    borderBottomColor: 'rgba(155, 92, 255, 0.4)',
     paddingVertical: 8,
     fontSize: 15,
     fontWeight: '700',
   },
   forgotLink: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontSize: 11,
     fontWeight: '900',
     textAlign: 'right',
   },
   authMessage: {
-    color: '#dc2626',
+    color: '#ff007f',
     fontSize: 12,
     fontWeight: '800',
     textAlign: 'center',
     lineHeight: 18,
   },
   authHint: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '900',
     marginTop: 8,
   },
   authSubmitButton: {
-    backgroundColor: '#9b5cff',
-    borderRadius: 8,
+    backgroundColor: '#ff007f',
+    borderRadius: 18,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 10,
+    shadowColor: '#ff007f',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   authSubmitText: {
     color: '#ffffff',
@@ -2353,24 +2654,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   authSwitchText: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '800',
     marginTop: 2,
   },
   signupHint: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     lineHeight: 20,
     textAlign: 'center',
     fontWeight: '700',
     marginBottom: 3,
   },
   flowHeader: {
-    backgroundColor: '#fbf8ff',
+    backgroundColor: '#1b1035',
     borderWidth: 1,
-    borderColor: '#eadcff',
-    borderRadius: 8,
+    borderColor: 'rgba(155, 92, 255, 0.25)',
+    borderRadius: 16,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2380,8 +2681,8 @@ const styles = StyleSheet.create({
   flowIconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    backgroundColor: '#120b24',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2389,21 +2690,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   flowTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     fontSize: 15,
     marginBottom: 3,
   },
   flowCopy: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '700',
   },
   evidenceButton: {
     borderWidth: 1,
-    borderColor: '#d8c4ff',
-    backgroundColor: '#fbf8ff',
+    borderColor: 'rgba(155, 92, 255, 0.3)',
+    backgroundColor: '#1b1035',
     borderRadius: 18,
     paddingVertical: 13,
     paddingHorizontal: 14,
@@ -2414,18 +2715,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   evidenceButtonReady: {
-    backgroundColor: '#7c3aed',
-    borderColor: '#7c3aed',
+    backgroundColor: '#ff007f',
+    borderColor: '#ff007f',
   },
   evidenceText: {
-    color: '#7c3aed',
+    color: '#9b5cff',
     fontWeight: '900',
   },
   evidenceTextReady: {
     color: '#ffffff',
   },
   verificationNote: {
-    backgroundColor: '#f5edff',
+    backgroundColor: 'rgba(155, 92, 255, 0.1)',
     borderRadius: 16,
     padding: 12,
     flexDirection: 'row',
@@ -2433,38 +2734,42 @@ const styles = StyleSheet.create({
   },
   verificationText: {
     flex: 1,
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',
   },
   demoBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(27, 16, 53, 0.6)',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     borderRadius: 20,
     padding: 14,
     marginTop: 16,
   },
   demoTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     marginBottom: 6,
   },
   demoLine: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '700',
     lineHeight: 18,
   },
   primaryButton: {
-    backgroundColor: '#9b5cff',
+    backgroundColor: '#ff007f',
     borderRadius: 20,
     paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+    shadowColor: '#ff007f',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   primaryButtonText: {
     color: '#ffffff',
@@ -2472,7 +2777,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   linkText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     textAlign: 'center',
     fontWeight: '800',
     marginTop: 2,
@@ -2482,12 +2787,12 @@ const styles = StyleSheet.create({
     paddingBottom: 112,
   },
   topCard: {
-    borderRadius: 30,
+    borderRadius: 26,
     padding: 16,
     marginTop: 10,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
   },
   topBar: {
     flexDirection: 'row',
@@ -2505,33 +2810,33 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   smallLabel: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
   appTitle: {
-    color: '#251044',
-    fontSize: 29,
+    color: '#ffffff',
+    fontSize: 28,
     fontWeight: '900',
-    letterSpacing: 0,
+    letterSpacing: 0.5,
   },
   profilePill: {
     width: 45,
     height: 45,
     borderRadius: 23,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1b1035',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
   },
   profileInitial: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   heroLine: {
-    color: '#4c1d95',
+    color: '#ffffff',
     fontSize: 22,
     lineHeight: 29,
     fontWeight: '900',
@@ -2541,20 +2846,20 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   needChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     marginRight: 9,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   needChipActive: {
-    backgroundColor: '#7c3aed',
-    borderColor: '#7c3aed',
+    backgroundColor: '#ff007f',
+    borderColor: '#ff007f',
   },
   needChipText: {
-    color: '#7c3aed',
+    color: '#bcaed4',
     fontWeight: '900',
   },
   needChipTextActive: {
@@ -2567,7 +2872,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   locationText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontSize: 12,
     fontWeight: '900',
   },
@@ -2575,19 +2880,19 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   quickActionButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginRight: 10,
     borderWidth: 1,
-    borderColor: '#e9d5ff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   quickActionButtonText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   vendorHeroStats: {
@@ -2602,10 +2907,10 @@ const styles = StyleSheet.create({
     width: 188,
     borderRadius: 24,
     overflow: 'hidden',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     marginRight: 12,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   mostOrderedImage: {
     width: '100%',
@@ -2615,18 +2920,18 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   mostOrderedRating: {
-    color: '#7c3aed',
+    color: '#ffaa00',
     fontWeight: '900',
     marginBottom: 6,
   },
   mostOrderedTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     fontSize: 14,
     marginBottom: 4,
   },
   mostOrderedVendor: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2634,7 +2939,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 12,
     right: 12,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#ff007f',
     borderRadius: 18,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -2666,19 +2971,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   promoCopy: {
-    color: '#f5edff',
+    color: '#ffffff',
     fontWeight: '800',
     marginBottom: 14,
   },
   promoButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#00f2fe',
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     alignSelf: 'flex-start',
   },
   promoButtonText: {
-    color: '#7c3aed',
+    color: '#090514',
     fontWeight: '900',
   },
   whatsForLunchRow: {
@@ -2687,10 +2992,10 @@ const styles = StyleSheet.create({
   lunchCard: {
     width: 170,
     borderRadius: 24,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     marginRight: 12,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     overflow: 'hidden',
   },
   lunchImage: {
@@ -2701,36 +3006,36 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   lunchTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     fontSize: 14,
     marginBottom: 4,
   },
   lunchVendor: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 8,
   },
   lunchPrice: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   vendorHeroStat: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 20,
     padding: 13,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   vendorHeroValue: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 18,
     fontWeight: '900',
   },
   vendorHeroLabel: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontWeight: '800',
     fontSize: 12,
     marginTop: 3,
@@ -2743,9 +3048,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(155, 92, 255, 0.25)',
   },
   revenueLabel: {
-    color: '#ddd6fe',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
@@ -2757,7 +3064,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   revenueMeta: {
-    color: '#f5edff',
+    color: '#ff007f',
     fontWeight: '800',
     marginTop: 7,
   },
@@ -2765,7 +3072,7 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2777,34 +3084,34 @@ const styles = StyleSheet.create({
   vendorMetricCard: {
     flex: 1,
     minHeight: 112,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 22,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   metricIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#ccfbf1',
+    backgroundColor: 'rgba(57, 255, 20, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   metricIconPurple: {
-    backgroundColor: '#f3e8ff',
+    backgroundColor: 'rgba(155, 92, 255, 0.15)',
   },
   metricIconAmber: {
-    backgroundColor: '#fef3c7',
+    backgroundColor: 'rgba(255, 170, 0, 0.1)',
   },
   metricValue: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 22,
     fontWeight: '900',
     marginTop: 10,
   },
   metricLabel: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '900',
     marginTop: 2,
@@ -2818,10 +3125,10 @@ const styles = StyleSheet.create({
   vendorActionCard: {
     width: '48%',
     minHeight: 70,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2829,7 +3136,7 @@ const styles = StyleSheet.create({
   },
   vendorActionText: {
     flex: 1,
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     lineHeight: 18,
   },
@@ -2841,30 +3148,30 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 22,
     padding: 15,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   statValue: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 22,
     fontWeight: '900',
     marginTop: 10,
   },
   statLabel: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontWeight: '800',
     marginTop: 3,
   },
   orderRow: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 22,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -2873,7 +3180,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: 'rgba(155, 92, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2881,45 +3188,45 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   orderAmount: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
   },
   orderStatus: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontSize: 12,
     fontWeight: '900',
     marginTop: 4,
   },
   messageTag: {
-    backgroundColor: '#f3e8ff',
+    backgroundColor: 'rgba(155, 92, 255, 0.15)',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   messageTagText: {
-    color: '#7c3aed',
+    color: '#bcaed4',
     fontSize: 11,
     fontWeight: '900',
   },
   ruleBox: {
-    backgroundColor: '#f5edff',
+    backgroundColor: 'rgba(155, 92, 255, 0.1)',
     borderRadius: 18,
     padding: 12,
     flexDirection: 'row',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     marginBottom: 12,
   },
   ruleText: {
     flex: 1,
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '800',
   },
   catalogAddButton: {
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#ff007f',
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -2933,18 +3240,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   catalogMeta: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontWeight: '800',
     marginTop: -6,
     marginBottom: 12,
   },
   vendorProductCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 24,
     padding: 15,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   vendorProductTop: {
     flexDirection: 'row',
@@ -2955,7 +3262,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#1b1035',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2963,19 +3270,19 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#1b1035',
   },
   vendorProductPrice: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
     flexShrink: 0,
   },
   backButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1b1035',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 9,
     flexDirection: 'row',
@@ -2984,14 +3291,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backButtonText: {
-    color: '#7c3aed',
+    color: '#ff007f',
     fontWeight: '900',
   },
   vendorPageHero: {
     minHeight: 220,
     borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: '#4c1d95',
+    backgroundColor: '#120b24',
     marginBottom: 16,
   },
   vendorPageImage: {
@@ -3004,7 +3311,7 @@ const styles = StyleSheet.create({
   },
   vendorPageBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#ff007f',
     borderRadius: 999,
     paddingHorizontal: 11,
     paddingVertical: 7,
@@ -3014,7 +3321,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   vendorPageBadgeText: {
-    color: '#7c3aed',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '900',
   },
@@ -3024,17 +3331,44 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   vendorPageCopy: {
-    color: '#f5edff',
+    color: '#bcaed4',
     fontWeight: '900',
     marginTop: 6,
   },
+  vendorInfoCard: {
+    backgroundColor: '#1b1035',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: -24,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: '#000000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(155, 92, 255, 0.2)',
+  },
+  vendorInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 },
+  vendorInfoText: { marginLeft: 6, color: '#ffffff', fontWeight: '600' },
+  profileModal: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(5,3,10,0.85)' },
+  profileCard: { width: '90%', backgroundColor: '#120b24', borderRadius: 24, padding: 0, elevation: 8, shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.25)' },
+  profileHeader: { padding: 18, backgroundColor: '#1b1035', flexDirection: 'row', alignItems: 'center', gap: 12 },
+  profileAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#120b24', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.2)' },
+  profileNameText: { color: '#ffffff', fontWeight: '900', fontSize: 18 },
+  profileSubText: { color: '#bcaed4', fontSize: 13 },
+  profileBody: { padding: 16 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  profileLabel: { color: '#7e6aa7', fontWeight: '700', fontSize: 13 },
+  profileValue: { color: '#ffffff', fontWeight: '800', fontSize: 14 },
+  profileActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  editorInput: { borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.2)', borderRadius: 12, padding: 10, marginTop: 6, marginBottom: 12, backgroundColor: '#1b1035', color: '#ffffff' },
   vendorListingCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 24,
     padding: 15,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   vendorListingTop: {
     flexDirection: 'row',
@@ -3042,7 +3376,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   vendorListingDescription: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     lineHeight: 20,
     fontWeight: '700',
     marginTop: 12,
@@ -3056,7 +3390,7 @@ const styles = StyleSheet.create({
   purchaseButton: {
     flexGrow: 1,
     minWidth: 132,
-    backgroundColor: '#4c1d95',
+    backgroundColor: '#ff007f',
     borderRadius: 18,
     paddingVertical: 13,
     paddingHorizontal: 14,
@@ -3072,7 +3406,7 @@ const styles = StyleSheet.create({
   bargainButton: {
     flexGrow: 1,
     minWidth: 132,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#1b1035',
     borderRadius: 18,
     paddingVertical: 13,
     paddingHorizontal: 14,
@@ -3081,33 +3415,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 7,
     borderWidth: 1,
-    borderColor: '#d8b4fe',
+    borderColor: 'rgba(155, 92, 255, 0.3)',
   },
   bargainButtonDisabled: {
-    backgroundColor: '#f8f4ff',
-    borderColor: '#eadcff',
+    backgroundColor: '#120b24',
+    borderColor: 'rgba(155, 92, 255, 0.1)',
   },
   bargainButtonText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   bargainButtonTextDisabled: {
-    color: '#9f8fb8',
+    color: '#6f5d8d',
   },
   searchCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 24,
     paddingHorizontal: 15,
     paddingVertical: 13,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   searchInput: {
     flex: 1,
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -3118,21 +3452,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     marginRight: 10,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   categoryChipActive: {
-    backgroundColor: '#efe3ff',
-    borderColor: '#c4b5fd',
+    backgroundColor: 'rgba(0, 242, 254, 0.15)',
+    borderColor: '#00f2fe',
   },
   categoryChipText: {
-    color: '#8b7aa8',
+    color: '#bcaed4',
     fontWeight: '900',
   },
   categoryChipTextActive: {
-    color: '#6d28d9',
+    color: '#00f2fe',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -3142,21 +3476,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   sectionTitle: {
-    color: '#251044',
-    fontSize: 23,
+    color: '#ffffff',
+    fontSize: 22,
     fontWeight: '900',
+    letterSpacing: 0.5,
   },
   sectionMeta: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontWeight: '800',
   },
   listingCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 26,
     marginBottom: 15,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.18)',
   },
   listingMedia: {
     height: 158,
@@ -3192,12 +3527,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listingTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 19,
     fontWeight: '900',
   },
   vendorName: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 14,
     fontWeight: '800',
     marginTop: 3,
@@ -3205,7 +3540,7 @@ const styles = StyleSheet.create({
   saveButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
     paddingHorizontal: 10,
     paddingVertical: 8,
     flexDirection: 'row',
@@ -3213,15 +3548,15 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   saveButtonActive: {
-    backgroundColor: '#f3e8ff',
-    borderColor: '#c4b5fd',
+    backgroundColor: 'rgba(255, 0, 127, 0.15)',
+    borderColor: '#ff007f',
   },
   saveButtonText: {
-    color: '#8b7aa8',
+    color: '#bcaed4',
     fontWeight: '900',
   },
   saveButtonTextActive: {
-    color: '#7c3aed',
+    color: '#ff007f',
   },
   metaRow: {
     flexDirection: 'row',
@@ -3229,8 +3564,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   metaText: {
-    backgroundColor: '#f6efff',
-    color: '#6d28d9',
+    backgroundColor: 'rgba(155, 92, 255, 0.15)',
+    color: '#bcaed4',
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 6,
@@ -3244,7 +3579,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   campusText: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontWeight: '800',
   },
   tagRow: {
@@ -3254,8 +3589,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   tag: {
-    color: '#4c1d95',
-    backgroundColor: '#fbf8ff',
+    color: '#ffffff',
+    backgroundColor: '#1b1035',
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 6,
@@ -3267,9 +3602,11 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 2,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(155, 92, 255, 0.25)',
   },
   detailTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 20,
     fontWeight: '900',
   },
@@ -3279,18 +3616,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   detailVendor: {
-    color: '#f5edff',
+    color: '#ff007f',
     fontWeight: '900',
     marginTop: 6,
   },
   detailPanelCopy: {
-    color: '#fbf8ff',
+    color: '#ffffff',
     fontSize: 14,
     lineHeight: 21,
     marginTop: 10,
   },
   detailCopy: {
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 14,
     lineHeight: 21,
     marginTop: 8,
@@ -3302,7 +3639,7 @@ const styles = StyleSheet.create({
   },
   darkButton: {
     flex: 1,
-    backgroundColor: '#4c1d95',
+    backgroundColor: '#ff007f',
     borderRadius: 18,
     paddingVertical: 13,
     alignItems: 'center',
@@ -3316,7 +3653,9 @@ const styles = StyleSheet.create({
   },
   lightButton: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
+    borderWidth: 1,
+    borderColor: '#00f2fe',
     borderRadius: 18,
     paddingVertical: 13,
     alignItems: 'center',
@@ -3325,7 +3664,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   lightButtonText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   reelFeed: {
@@ -3337,7 +3676,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
     borderRadius: 30,
-    backgroundColor: '#4c1d95',
+    backgroundColor: '#120b24',
   },
   reelImage: {
     borderRadius: 30,
@@ -3377,14 +3716,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   subscribeButtonActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#ff007f',
   },
   subscribeButtonText: {
     color: '#ffffff',
     fontWeight: '900',
   },
   subscribeButtonTextActive: {
-    color: '#7c3aed',
+    color: '#ffffff',
   },
   reelBottomRow: {
     marginTop: 18,
@@ -3393,17 +3732,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reelMusicText: {
-    color: '#d8c4ff',
+    color: '#bcaed4',
     fontWeight: '700',
     flex: 1,
   },
   reelCommentText: {
-    color: '#f5edff',
+    color: '#ffffff',
     fontWeight: '800',
   },
   reelBadge: {
     color: '#ffffff',
-    backgroundColor: 'rgba(124, 58, 237, 0.9)',
+    backgroundColor: 'rgba(255, 0, 127, 0.9)',
     borderRadius: 999,
     paddingHorizontal: 11,
     paddingVertical: 7,
@@ -3413,7 +3752,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(27, 16, 53, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3423,24 +3762,24 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   reelVendor: {
-    color: '#f0abfc',
+    color: '#00f2fe',
     fontWeight: '900',
     marginTop: 6,
   },
   reelCaption: {
-    color: '#f8f1ff',
+    color: '#ffffff',
     lineHeight: 21,
     marginTop: 8,
   },
   chatRow: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 24,
     padding: 14,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.18)',
   },
   chatAvatar: {
     width: 48,
@@ -3458,20 +3797,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chatName: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     fontSize: 16,
   },
   chatLast: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     marginTop: 4,
     lineHeight: 19,
   },
   chatPrivacyNotice: {
-    backgroundColor: '#f5edff',
+    backgroundColor: 'rgba(155, 92, 255, 0.1)',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -3480,7 +3819,7 @@ const styles = StyleSheet.create({
   },
   chatPrivacyText: {
     flex: 1,
-    color: '#6f5d8d',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '900',
     lineHeight: 18,
@@ -3491,19 +3830,19 @@ const styles = StyleSheet.create({
   threadChip: {
     minWidth: 176,
     maxWidth: 220,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 22,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     marginRight: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
   },
   threadChipActive: {
-    backgroundColor: '#7c3aed',
-    borderColor: '#7c3aed',
+    backgroundColor: '#9b5cff',
+    borderColor: '#9b5cff',
   },
   threadChipAvatar: {
     width: 40,
@@ -3516,36 +3855,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   threadChipName: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
   },
   threadChipNameActive: {
     color: '#ffffff',
   },
   threadChipStatus: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '800',
     marginTop: 2,
   },
   threadChipStatusActive: {
-    color: '#eee7ff',
+    color: '#ffffff',
   },
   chatPanel: {
-    backgroundColor: '#efe7f8',
+    backgroundColor: '#120b24',
     borderRadius: 26,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.25)',
   },
   chatPanelHeader: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1b1035',
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eadcff',
+    borderBottomColor: 'rgba(155, 92, 255, 0.2)',
   },
   chatPanelAvatar: {
     width: 44,
@@ -3558,12 +3897,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chatPanelName: {
-    color: '#251044',
+    color: '#ffffff',
     fontWeight: '900',
     fontSize: 17,
   },
   chatPanelSubtitle: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     fontWeight: '800',
     marginTop: 2,
@@ -3572,7 +3911,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#120b24',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3582,17 +3921,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyChatState: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 20,
     padding: 18,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.18)',
   },
   dayPill: {
     alignSelf: 'center',
-    backgroundColor: '#ffffff',
-    color: '#7f6a9f',
+    backgroundColor: '#1b1035',
+    color: '#bcaed4',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -3616,15 +3955,17 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   messageBubbleTheirs: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1b1035',
     borderTopLeftRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(155, 92, 255, 0.15)',
   },
   messageBubbleMine: {
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#ff007f',
     borderTopRightRadius: 6,
   },
   messageText: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 15,
     lineHeight: 21,
     fontWeight: '700',
@@ -3633,29 +3974,29 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   messageTime: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontSize: 10,
     fontWeight: '900',
     alignSelf: 'flex-end',
     marginTop: 5,
   },
   messageTimeMine: {
-    color: '#e9d5ff',
+    color: '#ffd0e6',
   },
   composerRow: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     padding: 10,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eadcff',
+    borderTopColor: 'rgba(155, 92, 255, 0.25)',
   },
   composerIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#1b1035',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3664,8 +4005,8 @@ const styles = StyleSheet.create({
     minHeight: 38,
     maxHeight: 96,
     borderRadius: 19,
-    backgroundColor: '#fbf8ff',
-    color: '#251044',
+    backgroundColor: '#1b1035',
+    color: '#ffffff',
     paddingHorizontal: 14,
     paddingVertical: 9,
     fontWeight: '700',
@@ -3674,18 +4015,18 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#ff007f',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonMuted: {
-    backgroundColor: '#c4b5fd',
+    backgroundColor: 'rgba(255, 0, 127, 0.4)',
   },
   unreadBadge: {
     width: 27,
     height: 27,
     borderRadius: 14,
-    backgroundColor: '#a855f7',
+    backgroundColor: '#ff007f',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3694,11 +4035,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   negotiationBox: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 26,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     gap: 12,
   },
   miniTitleRow: {
@@ -3711,31 +4052,31 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   offerChip: {
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#1b1035',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   offerChipText: {
-    color: '#7c3aed',
+    color: '#00f2fe',
     fontWeight: '900',
   },
   emptyState: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 26,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
   },
   emptyTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 20,
     fontWeight: '900',
     marginTop: 10,
   },
   emptyCopy: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     marginTop: 8,
     textAlign: 'center',
   },
@@ -3745,17 +4086,17 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   addListingPanel: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 26,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     gap: 12,
     marginBottom: 14,
   },
   kindSwitch: {
     flexDirection: 'row',
-    backgroundColor: '#f5edff',
+    backgroundColor: '#1b1035',
     borderRadius: 20,
     padding: 5,
   },
@@ -3769,10 +4110,10 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   kindButtonActive: {
-    backgroundColor: '#9b5cff',
+    backgroundColor: '#ff007f',
   },
   kindButtonText: {
-    color: '#7c3aed',
+    color: '#bcaed4',
     fontWeight: '900',
   },
   kindButtonTextActive: {
@@ -3782,10 +4123,10 @@ const styles = StyleSheet.create({
     minHeight: 170,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#d8b4fe',
+    borderColor: 'rgba(155, 92, 255, 0.3)',
     borderStyle: 'dashed',
     overflow: 'hidden',
-    backgroundColor: '#fbf8ff',
+    backgroundColor: '#1b1035',
   },
   photoUploadEmpty: {
     flex: 1,
@@ -3795,13 +4136,13 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   photoUploadTitle: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '900',
     marginTop: 10,
   },
   photoUploadCopy: {
-    color: '#7f6a9f',
+    color: '#bcaed4',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '800',
@@ -3816,7 +4157,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     bottom: 12,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#ff007f',
     borderRadius: 999,
     paddingHorizontal: 11,
     paddingVertical: 8,
@@ -3841,17 +4182,17 @@ const styles = StyleSheet.create({
     lineHeight: 31,
   },
   studioCopy: {
-    color: '#f8f1ff',
+    color: '#bcaed4',
     lineHeight: 22,
     marginTop: 10,
   },
   studioAction: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 22,
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#eadcff',
+    borderColor: 'rgba(155, 92, 255, 0.2)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3862,7 +4203,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   studioActionText: {
-    color: '#251044',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '900',
   },
@@ -3871,14 +4212,14 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#120b24',
     borderRadius: 28,
     flexDirection: 'row',
     padding: 7,
     borderWidth: 1,
-    borderColor: '#eadcff',
-    shadowColor: '#7c3aed',
-    shadowOpacity: 0.14,
+    borderColor: 'rgba(155, 92, 255, 0.25)',
+    shadowColor: '#9b5cff',
+    shadowOpacity: 0.25,
     shadowRadius: 18,
     elevation: 9,
   },
@@ -3891,14 +4232,16 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   tabButtonActive: {
-    backgroundColor: '#9b5cff',
+    backgroundColor: 'rgba(255, 0, 127, 0.15)',
+    borderWidth: 1,
+    borderColor: '#ff007f',
   },
   tabText: {
-    color: '#8b7aa8',
+    color: '#7e6aa7',
     fontSize: 10,
     fontWeight: '900',
   },
   tabTextActive: {
-    color: '#ffffff',
+    color: '#ff007f',
   },
 });
