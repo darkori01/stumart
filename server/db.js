@@ -85,6 +85,3 @@ function getVendorMeta(vendorName){
 }
 
 module.exports = { addMessage, getMessages, getConversationsFor, makeConversationId, markRead, setVendorMeta, getVendorMeta };
-
-
-module.exports = { addMessage, getMessages, getConversationsFor, makeConversationId, markRead };

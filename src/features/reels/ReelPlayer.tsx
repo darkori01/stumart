@@ -55,20 +55,20 @@ export default function ReelPlayer({ reel, isActive, onLike, onShare, onSave, on
       <View style={styles.infoColumn} pointerEvents="box-none">
         <Pressable onPress={() => onOpenProfile(reel.vendor)} style={styles.vendorRow}>
           <Text style={styles.vendorHandle}>@{reel.vendor}</Text>
-          {reel.verified && <Ionicons name="checkmark-circle" size={16} color={theme.colors.purple500} />}
+          {reel.verified && <Ionicons name="checkmark-circle" size={16} color={theme.colors.neonPurple} />}
         </Pressable>
         <Text style={styles.caption}>{reel.caption}</Text>
-
-        <View style={styles.actions}>
-          <Pressable onPress={() => onLike(reel.id)} style={styles.actionButton}><Ionicons name="heart-outline" size={28} color="#fff" /><Text style={styles.actionLabel}>{reel.likes}</Text></Pressable>
-          <Pressable onPress={() => onShare(reel)} style={styles.actionButton}><Ionicons name="share-social-outline" size={28} color="#fff" /></Pressable>
-          <Pressable onPress={() => onSave(reel.id)} style={styles.actionButton}><Ionicons name="bookmark-outline" size={28} color="#fff" /></Pressable>
-        </View>
 
         <View style={styles.ctaRow}>
           <Pressable style={styles.cta} onPress={() => onBook(reel.id)}><Text style={styles.ctaText}>Book Service</Text></Pressable>
           <Pressable style={[styles.cta, { backgroundColor: '#fff' }]} onPress={() => onOpenProfile(reel.vendor)}><Text style={[styles.ctaText, { color: '#2b0b3a' }]}>View Shop</Text></Pressable>
         </View>
+      </View>
+
+      <View style={styles.actions}>
+        <Pressable onPress={() => onLike(reel.id)} style={styles.actionButton}><Ionicons name="heart-outline" size={28} color="#fff" /><Text style={styles.actionLabel}>{reel.likes}</Text></Pressable>
+        <Pressable onPress={() => onShare(reel)} style={styles.actionButton}><Ionicons name="share-social-outline" size={28} color="#fff" /></Pressable>
+        <Pressable onPress={() => onSave(reel.id)} style={styles.actionButton}><Ionicons name="bookmark-outline" size={28} color="#fff" /></Pressable>
       </View>
     </View>
   );
@@ -86,6 +86,6 @@ const styles = StyleSheet.create({
   actionButton: { alignItems: 'center', marginBottom: 18 },
   actionLabel: { color: '#fff', marginTop: 6 },
   ctaRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  cta: { backgroundColor: theme.colors.purple700, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  cta: { backgroundColor: theme.colors.neonPurple, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   ctaText: { color: '#fff', fontWeight: '800' },
 });
