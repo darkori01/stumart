@@ -5,7 +5,19 @@ const nodemailer = require('nodemailer');
 const app = express();
 app.use(bodyParser.json());
 
+// Allow the Expo app (web, devices, emulators) to call this server.
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 const PORT = process.env.PORT || 4000;
+
+// Simple health check so the app can confirm the backend is reachable.
+app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 function createTransport() {
   const host = process.env.SMTP_HOST;
@@ -48,4 +60,5 @@ app.use('/', chatRoutes);
 const vendorRoutes = require('./vendor');
 app.use('/', vendorRoutes);
 
-app.listen(PORT, () => console.log(`Email server listening on ${PORT}`));
+// Bind on 0.0.0.0 so physical devices and emulators on the LAN can reach it.
+app.listen(PORT, '0.0.0.0', () => console.log(`Stumart server listening on 0.0.0.0:${PORT}`));

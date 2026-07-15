@@ -1,22 +1,22 @@
 const colors = {
-  bg: '#090514',
-  surface: '#120b24',
-  surfaceElevated: '#1b1035',
-  border: 'rgba(155, 92, 255, 0.18)',
-  borderActive: '#00f2fe',
-  muted: '#7e6aa7',
+  bg: '#FEFEFE',
+  surface: '#FFFFFF',
+  surfaceElevated: '#FFFFFF',
+  border: 'rgba(110, 66, 225, 0.12)', // Main purple #6E42E1 with opacity
+  borderActive: '#6E42E1',
+  muted: '#744BDC',
   
-  // Neon Accents
-  neonCyan: '#00f2fe',
-  neonMagenta: '#ff007f',
-  neonPurple: '#9b5cff',
-  neonAmber: '#ffaa00',
-  neonGreen: '#39ff14',
+  // Accents mapped to new palette values
+  neonCyan: '#9B68F4',
+  neonMagenta: '#5B38C9',
+  neonPurple: '#6E42E1',
+  neonAmber: '#1F4A73',
+  neonGreen: '#4D2EB7',
   
-  // Base Text
-  textPrimary: '#ffffff',
-  textSecondary: '#bcaed4',
-  textMuted: '#6f5d8d',
+  // Base Text (HCI Contrast Compliant)
+  textPrimary: '#1F4A73',   // Deep blue for readable titles on light surface
+  textSecondary: '#4D2EB7', // Dark violet for readable labels and copy
+  textMuted: '#744BDC',     // Light violet for secondary details
 };
 
 const spacing = { xs: 6, sm: 10, md: 16, lg: 24 };
