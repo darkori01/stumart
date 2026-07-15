@@ -15,6 +15,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Switch,
   View,
 } from 'react-native';
 
@@ -176,10 +177,9 @@ const listings: Listing[] = [
     price: 'GHS 120',
     priceType: 'Negotiable',
     rating: '4.9',
-    campus: 'Pentagon Hostel',
+    campus: 'Brunei Hostel',
     description: 'Clean installs, soft glam touch-ups, and weekend slots for campus events and content days.',
-    image:
-      'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=80',
+    image: require('./assets/wig_styling.png'),
     tint: '#744BDC',
     tags: ['Hair', 'Event ready', 'Can bargain'],
   },
@@ -192,10 +192,9 @@ const listings: Listing[] = [
     price: 'GHS 180',
     priceType: 'Fixed',
     rating: '4.8',
-    campus: 'Legon Hall',
+    campus: 'Republic Hall',
     description: 'Sweet boxes for birthdays, society hangouts, surprise deliveries, and late-night study treats.',
-    image:
-      'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
+    image: require('./assets/cake_boxes.png'),
     tint: '#9B68F4',
     tags: ['Cakes', 'Preorder', 'Delivery'],
   },
@@ -208,10 +207,9 @@ const listings: Listing[] = [
     price: 'GHS 250',
     priceType: 'Negotiable',
     rating: '4.7',
-    campus: 'Business School',
+    campus: 'KNUST Business School',
     description: 'Brand identity packs, launch flyers, and social templates for student founders and creators.',
-    image:
-      'https://images.unsplash.com/photo-1558655146-9f40138edfeb?auto=format&fit=crop&w=900&q=80',
+    image: require('./assets/brand_kit.png'),
     tint: '#744BDC',
     tags: ['Branding', 'Flyers', 'Fast edits'],
   },
@@ -224,13 +222,102 @@ const listings: Listing[] = [
     price: 'GHS 45',
     priceType: 'Fixed',
     rating: '4.6',
-    campus: 'TF Hostel',
+    campus: 'Evandy Hostel (KNUST)',
     description: 'A ready-to-use kit with cleaner, brush, lace whitener, and deodorizer for everyday campus sneakers.',
-    image:
-      'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?auto=format&fit=crop&w=900&q=80',
+    image: require('./assets/sneaker_kit.png'),
     tint: '#6E42E1',
     tags: ['Sneakers', 'Same day', 'Pickup'],
   },
+  {
+    id: 'l5',
+    title: 'Premium KNUST Hoodie',
+    vendor: 'Campus Threads',
+    category: 'Fashion',
+    kind: 'Product',
+    price: 'GHS 200',
+    priceType: 'Fixed',
+    rating: '4.9',
+    campus: 'Independence Hall',
+    description: 'High-quality, stylish black university hoodie featuring the letters KNUST in bold gold text.',
+    image: require('./assets/knust_hoodie.png'),
+    tint: '#241150',
+    tags: ['Apparel', 'Hoodie', 'Merch'],
+  },
+  {
+    id: 'l6',
+    title: 'Mobile Phone Screen Repair',
+    vendor: 'TechFix KNUST',
+    category: 'Tech',
+    kind: 'Skill',
+    price: 'GHS 150',
+    priceType: 'Negotiable',
+    rating: '4.8',
+    campus: 'Gaza Hostel',
+    description: 'Professional screen repair for iPhones and Androids. Fast turnaround and quality parts.',
+    image: require('./assets/phone_repair.png'),
+    tint: '#1F4A73',
+    tags: ['Repair', 'Tech', 'Fast'],
+  },
+  {
+    id: 'l7',
+    title: 'Frontal installation',
+    vendor: 'Ama Beauty Lab',
+    category: 'Beauty',
+    kind: 'Skill',
+    price: 'GHS 150',
+    priceType: 'Negotiable',
+    rating: '4.8',
+    campus: 'Brunei Hostel',
+    description: 'Professional lace frontal installation with styling included. Bring your own hair.',
+    image: require('./assets/frontal_installation.png'),
+    tint: '#744BDC',
+    tags: ['Hair', 'Frontal', 'Wig'],
+  },
+  {
+    id: 'l8',
+    title: 'Custom Birthday Cake',
+    vendor: 'Kobby Bakes',
+    category: 'Food',
+    kind: 'Product',
+    price: 'GHS 250',
+    priceType: 'Fixed',
+    rating: '4.9',
+    campus: 'Republic Hall',
+    description: 'Beautifully decorated custom birthday cakes. 48-hour notice required.',
+    image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
+    tint: '#9B68F4',
+    tags: ['Cake', 'Birthday', 'Custom'],
+  },
+  {
+    id: 'l9',
+    title: 'Deep Clean Service',
+    vendor: 'FreshStep Campus',
+    category: 'Fashion',
+    kind: 'Skill',
+    price: 'GHS 60',
+    priceType: 'Negotiable',
+    rating: '4.7',
+    campus: 'Evandy Hostel (KNUST)',
+    description: 'Complete deep cleaning for your dirty sneakers. Looks brand new!',
+    image: 'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?auto=format&fit=crop&w=900&q=80',
+    tint: '#6E42E1',
+    tags: ['Sneakers', 'Cleaning', 'Service'],
+  },
+  {
+    id: 'l10',
+    title: 'Jollof Rice Box',
+    vendor: 'Campus Eats',
+    category: 'Food',
+    kind: 'Product',
+    price: 'GHS 35',
+    priceType: 'Fixed',
+    rating: '4.8',
+    campus: 'Independence Hall',
+    description: 'Delicious Jollof rice with fried plantain and chicken. Perfect for lunch.',
+    image: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?auto=format&fit=crop&w=900&q=80',
+    tint: '#FF6B6B',
+    tags: ['Food', 'Lunch', 'Jollof'],
+  }
 ];
 
 const reels: Reel[] = [
@@ -862,6 +949,26 @@ export default function App() {
     }
     setStudioMode('addListing');
     setActiveTab('Studio');
+  };
+
+  
+  const pickCustomerProfilePhoto = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Photo permission needed', 'Allow photo library access to change your profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setCustomerProfilePhotoUri(result.assets[0].uri);
+    }
   };
 
   const logout = () => {
@@ -2044,7 +2151,7 @@ export default function App() {
             {vendorListings.map((listing) => (
               <View key={listing.id} style={styles.vendorProductCard}>
                 <View style={styles.vendorProductTop}>
-                  <Image source={{ uri: listing.image }} style={styles.vendorProductThumb} />
+                  <Image source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} style={styles.vendorProductThumb} />
                   <View style={styles.flex}>
                     <Text style={styles.listingTitle}>{listing.title}</Text>
                     <Text style={styles.vendorName}>{listing.kind} based listing</Text>
@@ -2110,13 +2217,7 @@ export default function App() {
                 return (
                   <View key={listing.id} style={styles.vendorListingCard}>
                     <View style={styles.vendorListingTop}>
-                      <View style={[styles.vendorProductIcon, { backgroundColor: `${listing.tint}22` }]}>
-                        <Ionicons
-                          name={listing.kind === 'Skill' ? 'sparkles-outline' : 'cube-outline'}
-                          size={22}
-                          color="#6E42E1"
-                        />
-                      </View>
+                      <Image source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} style={styles.vendorProductThumb} />
                       <View style={styles.flex}>
                         <Text style={styles.listingTitle}>{listing.title}</Text>
                         <Text style={styles.vendorName}>{listing.kind}</Text>
@@ -2185,7 +2286,7 @@ export default function App() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mostOrderedRow}>
               {filteredListings.slice(0, 3).map((listing) => (
                 <View key={listing.id} style={styles.mostOrderedCard}>
-                  <Image source={{ uri: listing.image }} style={styles.mostOrderedImage} />
+                  <Image source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} style={styles.mostOrderedImage} />
                   <View style={styles.mostOrderedBody}>
                     <Text style={styles.mostOrderedRating}>★ {listing.rating}</Text>
                     <Text style={styles.mostOrderedTitle} numberOfLines={1}>{listing.title}</Text>
@@ -2229,7 +2330,7 @@ export default function App() {
                   onPress={() => openVendorListingPage(listing)}
                   style={styles.lunchCard}
                 >
-                  <Image source={{ uri: listing.image }} style={styles.lunchImage} />
+                  <Image source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} style={styles.lunchImage} />
                   <View style={styles.lunchInfo}>
                     <Text style={styles.lunchTitle} numberOfLines={1}>{listing.title}</Text>
                     <Text style={styles.lunchVendor}>{listing.vendor}</Text>
@@ -2401,7 +2502,7 @@ export default function App() {
 
             {marketListings.slice(0, 4).map((listing) => (
               <Pressable key={listing.id} style={styles.discoveryRow} onPress={() => openVendorListingPage(listing)}>
-                <Image source={{ uri: listing.image }} style={styles.discoveryImage} />
+                <Image source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} style={styles.discoveryImage} />
                 <View style={styles.chatBody}>
                   <Text style={styles.chatName}>{listing.title}</Text>
                   <Text style={styles.chatLast}>{listing.vendor} - {listing.category}</Text>
@@ -2585,7 +2686,7 @@ export default function App() {
                         <Ionicons name="checkmark-circle" size={18} color="#6E42E1" />
                       )}
                     </View>
-                    <Text style={styles.profileInstitution}>University of Ghana, Legon</Text>
+                    <Text style={styles.profileInstitution}>Kwame Nkrumah University of Science and Technology</Text>
                   </View>
 
                   {/* Stats Row */}
@@ -2638,30 +2739,43 @@ export default function App() {
                 <View style={styles.profileEditablePreview}>
                   <Text style={styles.profileSectionTitle}>Your information</Text>
 
-                  <View style={styles.profileInfoItem}>
-                    <Text style={styles.profileInfoLabel}>Display name</Text>
-                    <Text style={styles.profileInfoValue}>{customerDisplayName}</Text>
+                  <View style={styles.profileInfoRow}>
+                    <Ionicons name="person-outline" size={20} color="#6E42E1" />
+                    <View style={styles.profileInfoContent}>
+                      <Text style={styles.profileInfoLabel}>Display name</Text>
+                      <Text style={styles.profileInfoValue}>{customerDisplayName}</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.profileInfoItem}>
-                    <Text style={styles.profileInfoLabel}>Department & year</Text>
-                    <Text style={styles.profileInfoValue}>{customerDepartment} • {customerYear}</Text>
+                  <View style={styles.profileInfoRow}>
+                    <Ionicons name="school-outline" size={20} color="#6E42E1" />
+                    <View style={styles.profileInfoContent}>
+                      <Text style={styles.profileInfoLabel}>Department & year</Text>
+                      <Text style={styles.profileInfoValue}>{customerDepartment} • {customerYear}</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.profileInfoItem}>
-                    <Text style={styles.profileInfoLabel}>Contact number</Text>
-                    <Text style={styles.profileInfoValue}>{customerContactNumber}</Text>
+                  <View style={styles.profileInfoRow}>
+                    <Ionicons name="call-outline" size={20} color="#6E42E1" />
+                    <View style={styles.profileInfoContent}>
+                      <Text style={styles.profileInfoLabel}>Contact number</Text>
+                      <Text style={styles.profileInfoValue}>{customerContactNumber}</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.profileInfoItem}>
-                    <Text style={styles.profileInfoLabel}>Campus location</Text>
-                    <Text style={styles.profileInfoValue}>{customerCampusLocation}</Text>
+                  <View style={styles.profileInfoRow}>
+                    <Ionicons name="location-outline" size={20} color="#6E42E1" />
+                    <View style={styles.profileInfoContent}>
+                      <Text style={styles.profileInfoLabel}>Campus location</Text>
+                      <Text style={styles.profileInfoValue}>{customerCampusLocation}</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.profileNotificationRow}>
-                    <View>
+                  <View style={styles.profileInfoRow}>
+                    <Ionicons name="notifications-outline" size={20} color="#6E42E1" />
+                    <View style={styles.profileInfoContent}>
                       <Text style={styles.profileInfoLabel}>Order notifications</Text>
-                      <Text style={styles.profileInfoDescription}>
+                      <Text style={styles.profileInfoValue}>
                         {customerNotificationsEnabled ? 'Enabled' : 'Disabled'}
                       </Text>
                     </View>
@@ -2953,7 +3067,7 @@ function ListingCard({
 }) {
   return (
     <Pressable onPress={onOpen} style={styles.listingCard}>
-      <ImageBackground source={{ uri: listing.image }} imageStyle={styles.listingImage} style={styles.listingMedia}>
+      <ImageBackground source={typeof listing.image === 'string' ? { uri: listing.image } : listing.image} imageStyle={styles.listingImage} style={styles.listingMedia}>
         <LinearGradient colors={['transparent', 'rgba(31, 74, 115, 0.75)']} style={styles.mediaShade}>
           <View style={[styles.priceTag, { backgroundColor: listing.tint }]}>
             <Text style={styles.priceText}>{listing.price}</Text>
@@ -3034,7 +3148,7 @@ const styles = StyleSheet.create({
   loadingText: {
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     marginTop: 8,
     letterSpacing: 0.5,
   },
@@ -3170,7 +3284,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#241150',
-    fontWeight: '700',
+    fontWeight: '800',
     marginTop: 6,
     marginBottom: 12,
   },
@@ -3185,12 +3299,12 @@ const styles = StyleSheet.create({
   pickerFieldText: {
     color: '#241150',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   pickerFieldPlaceholder: {
     color: '#744BDC',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   pickerBackdrop: {
     flex: 1,
@@ -3237,7 +3351,7 @@ const styles = StyleSheet.create({
   pickerOptionText: {
     color: '#4D2EB7',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   pickerOptionTextSelected: {
     color: '#1F4A73',
@@ -3290,7 +3404,7 @@ const styles = StyleSheet.create({
     color: '#4D2EB7',
     lineHeight: 20,
     textAlign: 'center',
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 3,
   },
   flowHeader: {
@@ -3325,7 +3439,7 @@ const styles = StyleSheet.create({
     color: '#4D2EB7',
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   evidenceButton: {
     borderWidth: 1,
@@ -3363,7 +3477,7 @@ const styles = StyleSheet.create({
     color: '#4D2EB7',
     fontSize: 12,
     lineHeight: 18,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   demoBox: {
     backgroundColor: '#FFFFFF',
@@ -3381,7 +3495,7 @@ const styles = StyleSheet.create({
   demoLine: {
     color: '#4D2EB7',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 18,
   },
   primaryButton: {
@@ -4013,19 +4127,19 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     color: '#241150',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 15,
     textAlign: 'center',
   },
   profileModal: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(5,3,10,0.85)' },
-  profileCard: { width: '90%', backgroundColor: '#FFFFFF', borderRadius: 16, padding: 0, elevation: 8, shadowColor: '#6E42E1', shadowOpacity: 0.14, shadowRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.25)' },
+  profileCard: { width: '92%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 0, elevation: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, overflow: 'hidden', borderWidth: 0 },
   profileHeader: { padding: 18, backgroundColor: '#F4F1FE', flexDirection: 'row', alignItems: 'center', gap: 12 },
   profileAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.2)' },
   profileNameText: { color: '#241150', fontWeight: '900', fontSize: 18 },
   profileSubText: { color: '#655A88', fontSize: 13 },
   profileBody: { padding: 16 },
   profileRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  profileLabel: { color: '#655A88', fontWeight: '700', fontSize: 13 },
+  profileLabel: { color: '#655A88', fontWeight: '800', fontSize: 13 },
   profileValue: { color: '#241150', fontWeight: '800', fontSize: 14 },
   profileActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   editorInput: { borderWidth: 1, borderColor: 'rgba(155, 92, 255, 0.2)', borderRadius: 12, padding: 10, marginTop: 6, marginBottom: 12, backgroundColor: '#F4F1FE', color: '#241150' },
@@ -4045,7 +4159,7 @@ const styles = StyleSheet.create({
   vendorListingDescription: {
     color: '#655A88',
     lineHeight: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     marginTop: 12,
   },
   vendorListingActions: {
@@ -4110,7 +4224,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#241150',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   categoryRow: {
     marginVertical: 16,
@@ -4157,11 +4271,15 @@ const styles = StyleSheet.create({
   },
   listingCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 15,
+    borderRadius: 16,
+    marginBottom: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(155, 92, 255, 0.18)',
+    borderWidth: 0,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
   },
   listingMedia: {
     height: 158,
@@ -4416,7 +4534,7 @@ const styles = StyleSheet.create({
   },
   reelMusicText: {
     color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '700',
+    fontWeight: '800',
     flex: 1,
   },
   reelCommentText: {
@@ -4652,7 +4770,7 @@ const styles = StyleSheet.create({
     color: '#241150',
     fontSize: 15,
     lineHeight: 21,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   messageTextMine: {
     color: '#ffffff',
@@ -4693,7 +4811,7 @@ const styles = StyleSheet.create({
     color: '#241150',
     paddingHorizontal: 14,
     paddingVertical: 9,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   sendButton: {
     width: 38,
@@ -5189,7 +5307,7 @@ const styles = StyleSheet.create({
   profileInstitution: {
     fontSize: 13,
     color: '#655A88',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   profileStatsContainer: {
     flexDirection: 'row',
@@ -5212,10 +5330,10 @@ const styles = StyleSheet.create({
     color: '#6E42E1',
     marginBottom: 2,
   },
-  profileStatLabel: {
+  profileStatLabel2: {
     fontSize: 11,
     color: '#655A88',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   profileStatDivider: {
     width: 1,
@@ -5232,7 +5350,7 @@ const styles = StyleSheet.create({
   profileMetaText: {
     fontSize: 12,
     color: '#655A88',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   profileTrustBadgeContainer: {
     width: '100%',
@@ -5258,7 +5376,7 @@ const styles = StyleSheet.create({
     bottom: 4,
     fontSize: 9,
     color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
+    fontWeight: '800',
     right: 16,
   },
   editProfileButton: {
@@ -5291,19 +5409,30 @@ const styles = StyleSheet.create({
     color: '#241150',
     marginBottom: 12,
   },
-  profileInfoItem: {
-    marginBottom: 12,
+  
+  profileInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(155, 92, 255, 0.08)',
+    paddingBottom: 12,
   },
+  profileInfoContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+
   profileInfoLabel: {
     fontSize: 11,
     color: '#655A88',
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 3,
   },
   profileInfoValue: {
     fontSize: 13,
     color: '#241150',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   profileInfoDescription: {
     fontSize: 11,
@@ -5368,7 +5497,7 @@ const styles = StyleSheet.create({
   },
   editFieldLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#241150',
     marginBottom: 6,
   },
@@ -5387,7 +5516,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
     color: '#241150',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   notificationToggleRow: {
     flexDirection: 'row',
